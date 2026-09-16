@@ -16,6 +16,8 @@ import { summarize, type CategoryLine } from '../modules/food/summary.ts'
 import { useFood, type Food } from '../modules/food/useFood.ts'
 import { Fold } from '../ui/Fold.tsx'
 import { useNow } from '../ui/useNow.ts'
+import { syncDot } from '../ui/syncDot.ts'
+import { useSyncStatus } from '../ui/useSync.ts'
 import { useToday } from '../ui/useToday.ts'
 
 type Data = Food['data']
@@ -51,6 +53,7 @@ export function Today() {
   const isToday = day === today
   const food = useFood()
   const [hours, setHours] = useState<MealHours>(DEFAULT_MEAL_HOURS)
+  const mark = syncDot(useSyncStatus())
 
   useEffect(() => {
     void db.settings.get(MEAL_HOURS_KEY).then((stored) => setHours(readMealHours(stored)))
@@ -67,6 +70,8 @@ export function Today() {
           <div className="screen-head__tools">
             <Link className="gear" to="/settings" aria-label="Настройки">
               <span aria-hidden="true">⚙</span>
+              {/* Синхронизация живёт в фоне: точка зовёт в «Настройки». */}
+              {mark && <span className={mark} aria-hidden="true" />}
             </Link>
           </div>
         </div>

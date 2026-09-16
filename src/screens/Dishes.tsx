@@ -156,7 +156,7 @@ function Found({ dishes, data, query, save }: { dishes: Dish[]; data: Data; quer
   return (
     <section className="block">
       <p className="muted">
-        Найдено {found.length} из {count(dishes.length, FORMS.dish)}
+        Найдено {found.length} из {count(dishes.length, FORMS.dishOf)}
       </p>
       <DishList dishes={found} data={data} save={save} />
     </section>

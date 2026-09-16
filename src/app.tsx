@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { startAutoSync } from './core/sync.ts'
 import { watchMerges } from './modules/food/useFood.ts'
 import { Layout } from './ui/Layout.tsx'
 import { Dishes } from './screens/Dishes.tsx'
@@ -14,11 +15,14 @@ import { Settings } from './screens/Settings.tsx'
  * приложение: оно пишет в базу, и каждый открытый экран писал бы то же
  * самое. Так же, как у «Делу Время».
  *
- * Синхронизация здесь не запускается до Этапа 2: `core/sync.ts` скопирован
- * с тестами, но к экранам не подключён (03-План, Этап 0). В Этапе 2 сюда
- * возвращается `startAutoSync` — один раз на приложение, как в «Делу Время».
+ * Синхронизация запускается здесь же, один раз на приложение: проход идёт
+ * по таймеру и по событиям и не зависит от того, какой экран открыт. Не
+ * настроена — проход ничего не делает и в сеть не ходит. Как в «Делу Время».
+ * Пришедшее с сервера пишется с происхождением `remote`, и слияние
+ * одноимённых видит его само.
  */
 export function App() {
+  useEffect(() => startAutoSync(), [])
   useEffect(() => watchMerges(), [])
 
   return (

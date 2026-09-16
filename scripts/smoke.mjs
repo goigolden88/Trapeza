@@ -26,6 +26,7 @@
  */
 
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { build, preview } from 'vite'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -147,6 +148,12 @@ function connect(url) {
     if (message.id !== undefined) {
       waiting.get(message.id)?.(message)
       waiting.delete(message.id)
+      return
+    }
+
+    // Запрос страницы к GitHub — отвечает подставной репозиторий прогона.
+    if (message.method === 'Fetch.requestPaused') {
+      void onGitHub(message.params)
       return
     }
 
@@ -276,6 +283,237 @@ async function offline(on) {
   })
 }
 
+// ─── Подставной GitHub ─────────────────────────────────────────────────────
+
+/**
+ * Репозиторий данных в памяти прогона (Этап 2). Блок взят из прогона
+ * «Делу Время» с d86f0aa; своё — только имя репозитория. Запросы страницы
+ * к api.github.com перехватываются протоколом отладки и обслуживаются
+ * здесь: сеть не нужна, настоящий репозиторий не трогается.
+ *
+ * Отвечает теми кодами, что GitHub: 409 «Git Repository is empty» у пустого
+ * репозитория — ровно на нём споткнулась первая интеграция «Дневников»,
+ * 422 на сдвиг ветки не с головы, 401 на чужой токен. Отпечаток файла —
+ * настоящий git blob sha: по нему приложение решает, что скачивать
+ * и что отправлять.
+ */
+const GOOD_TOKEN = 'github_pat_smoke'
+const REPO = 'me/trapeza-data'
+const TOKEN_EXPIRES = '2027-09-01 12:00:00 +0300'
+
+const github = {
+  /** Голова ветки main. Null — в репозитории ни одного коммита. */
+  head: null,
+  /** sha коммита → { tree, parent, message } */
+  commits: new Map(),
+  /** sha дерева → Map путь → sha файла */
+  trees: new Map(),
+  /** sha файла → содержимое */
+  blobs: new Map(),
+  /** Токен не принимается — 401 на всё. */
+  reject: false,
+  /** Связи нет — запрос обрывается, как без сети. */
+  down: false,
+  seq: 0,
+}
+
+function blobSha(content) {
+  const body = Buffer.from(content, 'utf8')
+  return createHash('sha1').update(Buffer.concat([Buffer.from(`blob ${body.length}\0`), body])).digest('hex')
+}
+
+function nextSha(kind) {
+  github.seq += 1
+  return createHash('sha1').update(`${kind}:${github.seq}`).digest('hex')
+}
+
+function putBlob(content) {
+  const sha = blobSha(content)
+  github.blobs.set(sha, content)
+  return sha
+}
+
+function putTree(files) {
+  const sha = nextSha('tree')
+  github.trees.set(sha, files)
+  return sha
+}
+
+function putCommit(tree, parent, message) {
+  const sha = nextSha('commit')
+  github.commits.set(sha, { tree, parent, message })
+  return sha
+}
+
+/** Файлы дерева — по sha дерева или коммита: GitHub принимает оба. */
+function filesAt(sha) {
+  return github.trees.get(sha) ?? github.trees.get(github.commits.get(sha)?.tree) ?? new Map()
+}
+
+/** Файлы на голове ветки: путь → содержимое. */
+function repoFiles() {
+  return Object.fromEntries([...filesAt(github.head)].map(([path, sha]) => [path, github.blobs.get(sha)]))
+}
+
+/** Записи файла на голове ветки. Нет файла — пусто, не JSON — null. */
+function repoRecords(path) {
+  try {
+    return JSON.parse(repoFiles()[path] ?? '[]')
+  } catch {
+    return null
+  }
+}
+
+function commitCount() {
+  let count = 0
+  for (let sha = github.head; sha; sha = github.commits.get(sha)?.parent ?? null) count += 1
+  return count
+}
+
+/** Коммит «с другого устройства» — прямо в ветку, мимо приложения. */
+function commitFromOtherDevice(changes) {
+  const files = new Map(filesAt(github.head))
+  for (const [path, records] of Object.entries(changes)) {
+    files.set(path, putBlob(`${JSON.stringify(records, null, 2)}\n`))
+  }
+  github.head = putCommit(putTree(files), github.head, 'Другое устройство')
+}
+
+/** Ответ на запрос приложения: { status, body }. */
+function answer(request, text) {
+  const auth = Object.entries(request.headers).find(([name]) => name.toLowerCase() === 'authorization')?.[1]
+  if (github.reject || auth !== `Bearer ${GOOD_TOKEN}`) return { status: 401, body: { message: 'Bad credentials' } }
+
+  const method = request.method
+  const path = new URL(request.url).pathname.replace(/^\/repos\/[^/]+\/[^/]+/, '')
+  const data = text ? JSON.parse(text) : {}
+  let match
+
+  if (method === 'GET' && path === '') {
+    return {
+      status: 200,
+      body: { full_name: REPO, private: true, default_branch: 'main', permissions: { push: true } },
+    }
+  }
+
+  if (method === 'GET' && path === '/git/ref/heads/main') {
+    return github.head
+      ? { status: 200, body: { object: { sha: github.head } } }
+      : { status: 409, body: { message: 'Git Repository is empty.' } }
+  }
+
+  if (method === 'PUT' && path.startsWith('/contents/')) {
+    if (github.head) return { status: 422, body: { message: 'Invalid request. "sha" wasn\'t supplied.' } }
+    const file = decodeURIComponent(path.slice('/contents/'.length))
+    const content = Buffer.from(data.content, 'base64').toString('utf8')
+    github.head = putCommit(putTree(new Map([[file, putBlob(content)]])), null, data.message)
+    return { status: 201, body: { commit: { sha: github.head } } }
+  }
+
+  if (method === 'GET' && (match = /^\/git\/trees\/(\w+)$/.exec(path))) {
+    const files = filesAt(match[1])
+    // Как у GitHub: с recursive=1 в дереве и каталоги — приложение их отбрасывает.
+    const dirs = [...new Set([...files.keys()].filter((each) => each.includes('/')).map((each) => each.split('/')[0]))]
+    return {
+      status: 200,
+      body: {
+        tree: [
+          ...dirs.map((dir) => ({ path: dir, sha: nextSha('dir'), type: 'tree' })),
+          ...[...files].map(([file, sha]) => ({ path: file, sha, type: 'blob' })),
+        ],
+        truncated: false,
+      },
+    }
+  }
+
+  if (method === 'GET' && (match = /^\/git\/blobs\/(\w+)$/.exec(path))) {
+    const content = github.blobs.get(match[1])
+    return content === undefined
+      ? { status: 404, body: { message: 'Not Found' } }
+      : { status: 200, body: { content: Buffer.from(content, 'utf8').toString('base64'), encoding: 'base64' } }
+  }
+
+  if (method === 'POST' && path === '/git/trees') {
+    const files = new Map(filesAt(data.base_tree))
+    for (const entry of data.tree) files.set(entry.path, putBlob(entry.content))
+    return { status: 201, body: { sha: putTree(files) } }
+  }
+
+  if (method === 'POST' && path === '/git/commits') {
+    return { status: 201, body: { sha: putCommit(data.tree, data.parents[0] ?? null, data.message) } }
+  }
+
+  if (method === 'PATCH' && path === '/git/refs/heads/main') {
+    const commit = github.commits.get(data.sha)
+    if (!commit || commit.parent !== github.head) {
+      return { status: 422, body: { message: 'Update is not a fast forward' } }
+    }
+    github.head = data.sha
+    return { status: 200, body: { object: { sha: data.sha } } }
+  }
+
+  return { status: 404, body: { message: `Подставной GitHub не знает ${method} ${path}` } }
+}
+
+const CORS = [
+  { name: 'Access-Control-Allow-Origin', value: '*' },
+  { name: 'Access-Control-Expose-Headers', value: 'github-authentication-token-expiration' },
+]
+
+/**
+ * Перехваченный запрос. Отвечает всегда: запрос без ответа повис бы,
+ * и прогон ждал бы его молча.
+ */
+async function onGitHub({ requestId, request }) {
+  debug(`перехвачен ${request.method} ${request.url}`)
+  if (github.down) {
+    await send('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' })
+    return
+  }
+
+  if (request.method === 'OPTIONS') {
+    await send('Fetch.fulfillRequest', {
+      requestId,
+      responseCode: 204,
+      responseHeaders: [
+        ...CORS,
+        { name: 'Access-Control-Allow-Methods', value: 'GET, POST, PATCH, PUT' },
+        { name: 'Access-Control-Allow-Headers', value: 'Authorization, Content-Type, Accept, X-GitHub-Api-Version' },
+      ],
+    })
+    return
+  }
+
+  let reply
+  let text = ''
+  try {
+    text =
+      request.postData ??
+      (request.postDataEntries ?? []).map((entry) => Buffer.from(entry.bytes ?? '', 'base64').toString('utf8')).join('')
+    reply = answer(request, text)
+  } catch (failure) {
+    reply = { status: 500, body: { message: `Подставной GitHub упал: ${failure}` } }
+  }
+  debug(`github ${request.method} ${request.url} → ${reply.status}; тело ${text.length}, hasPostData ${request.hasPostData}`)
+
+  await send('Fetch.fulfillRequest', {
+    requestId,
+    responseCode: reply.status,
+    responseHeaders: [
+      ...CORS,
+      { name: 'Content-Type', value: 'application/json; charset=utf-8' },
+      { name: 'github-authentication-token-expiration', value: TOKEN_EXPIRES },
+    ],
+    body: Buffer.from(JSON.stringify(reply.body), 'utf8').toString('base64'),
+  })
+}
+
+/** Месяц `ГГГГ-ММ` по часам этого компьютера — как `today()` в приложении. */
+function localMonth() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
+
 // ─── Сценарий ──────────────────────────────────────────────────────────────
 
 /** Базовый адрес сайта (Р-10). С ним согласованы манифест и работник. */
@@ -358,7 +596,11 @@ async function scenario() {
     settings.replace(/\s+/g, ' ').slice(0, 160),
   )
   check('у свёрнутого «Экспорт и импорт» видно, что копии нет', has(settings, 'копии нет'))
-  check('в «Настройках» ещё нет синхронизации — Этап 2', !has(settings, 'Синхронизация'))
+  check(
+    'в «Настройках» синхронизация — первым разделом',
+    settings.indexOf('СИНХРОНИЗАЦИЯ') !== -1 && settings.indexOf('СИНХРОНИЗАЦИЯ') < settings.indexOf('ЭКСПОРТ И ИМПОРТ'),
+    settings.replace(/\s+/g, ' ').slice(0, 120),
+  )
 
   await unfold('О приложении')
   const about = await screen()
@@ -540,7 +782,7 @@ async function scenario() {
   const merged = await screen()
   check(
     'одноимённое блюдо из копии слилось само — одно, с калорийностью поздней правки',
-    has(merged, 'Найдено 1 из 3 блюд') && has(merged, 'БОРЩ · 55 ккал/100 г'),
+    /Найдено 1 из 3 блюд(?!а)/.test(merged) && has(merged, 'БОРЩ · 55 ккал/100 г'),
     `${line(merged, 'Найдено')}; ${line(merged, 'борщ')}`,
   )
 
@@ -623,6 +865,8 @@ async function scenario() {
     `${line(repeated, 'в 1 записи')}; ${line(repeated, 'ккал по')}`,
   )
 
+  await syncScenario()
+
   // ─ Service worker: без него нет ни офлайна, ни автообновления.
   const worker = await run(`Promise.race([
     navigator.serviceWorker.ready.then((r) => r.active?.state ?? 'нет'),
@@ -646,10 +890,171 @@ async function scenario() {
   const offlineAbout = await screen()
   check(
     'без сети данные на месте',
-    /(?:^|\n)Записи еды\s*5/.test(offlineAbout.replace(/ /g, ' ')),
+    /(?:^|\n)Записи еды\s*7/.test(offlineAbout.replace(/ /g, ' ')),
     /(?:^|\n)(Записи еды\s*\d+)/.exec(offlineAbout)?.[1] ?? '',
   )
   await offline(false)
+}
+
+/**
+ * Синхронизация (Этап 2) на подставном GitHub: включить, завести пустой
+ * репозиторий, отправить; тихий повтор; коммит другого устройства со вторым
+ * «Борщом» и записью к нему (Р-12); отказ токена; обрыв связи и очередь.
+ * В конце синхронизация выключается — дальше сценарий прежний.
+ * Каркас — `syncScenario` прогона «Делу Время» с d86f0aa.
+ */
+async function syncScenario() {
+  await send('Fetch.enable', { patterns: [{ urlPattern: 'https://api.github.com/*' }] })
+  const syncNow = async (wait = 2500) => {
+    await act(`byText('button', 'Синхронизировать')?.click()`)
+    await sleep(wait)
+    return screen()
+  }
+
+  // Проход идёт через пять секунд после последней записи: пусть прошлые
+  // записи сценария отработают, пока синхронизация выключена.
+  await sleep(6000)
+
+  await go('/settings')
+  await unfold('Синхронизация')
+  const off = await screen()
+  check(
+    'синхронизация по умолчанию выключена — данные только в браузере',
+    has(off, 'данные живут только в этом браузере'),
+    line(off, 'выключен'),
+  )
+
+  await act(`document.querySelector('.check input')?.click()`)
+  await sleep(500)
+  await act(`
+    set(document.querySelector('input[placeholder="владелец/репозиторий"]'), ${JSON.stringify(REPO)});
+    const token = document.querySelector('input[type=password]');
+    set(token, ${JSON.stringify(GOOD_TOKEN)});
+    blur(token);
+  `)
+  await sleep(500)
+  await act(`byText('button', 'Проверить доступ')?.click()`)
+  await sleep(1500)
+  const access = await screen()
+  check(
+    '«Проверить доступ»: репозиторий найден, приватный, запись разрешена; срок токена — из ответа',
+    has(access, `Репозиторий ${REPO} найден, приватный, запись разрешена`) &&
+      has(access, 'Токен действует до') &&
+      has(access, 'Сохранён в этом браузере'),
+    `${line(access, 'Репозиторий')}; ${line(access, 'Токен действует')}`,
+  )
+
+  // ─ Первый проход: пустой репозиторий заводится через Contents API, дальше — один коммит.
+  const first = await syncNow(3000)
+  debug(`экран после первого прохода:\n${first}`)
+  const paths = Object.keys(repoFiles()).sort()
+  const month = localMonth()
+  check(
+    'пустой репозиторий заведён сам, всё ушло одним коммитом',
+    commitCount() === 2 && has(first, 'отправлено файлов') && has(first, 'Всё отправлено'),
+    `коммитов ${commitCount()}; ${line(first, 'отправлено файлов')}`,
+  )
+  const expected = ['meta.json', 'categories.json', 'dishes.json', 'intake/2026-02.json', `intake/${month}.json`, 'README.md']
+  check(
+    'раскладка: справочники файлами, записи по месяцам, годовых файлов нет',
+    expected.every((path) => paths.includes(path)) && !paths.some((path) => /^intake\/\d{4}\.json$/.test(path)),
+    paths.join(', '),
+  )
+  check(
+    'README «Трапезы» положен приложением в пустой репозиторий',
+    (repoFiles()['README.md'] ?? '').startsWith('# Данные «Трапезы»') &&
+      (repoFiles()['README.md'] ?? '').includes('`intake/ГГГГ-ММ.json`'),
+    (repoFiles()['README.md'] ?? 'README нет').slice(0, 60),
+  )
+  check(
+    'февраль — в своём файле: 2, 3, 4 и 5 февраля',
+    repoRecords('intake/2026-02.json')?.length === 4,
+    `в intake/2026-02.json записей ${repoRecords('intake/2026-02.json')?.length}`,
+  )
+
+  const quiet = await syncNow()
+  check('повтор без правок — ни одного коммита', commitCount() === 2 && has(quiet, 'Всё и так совпадает'), `коммитов ${commitCount()}`)
+
+  // ─ Другое устройство: свой «Борщ» с другим id и ужин с ним (Р-12).
+  const later = new Date(Date.now() + 60_000).toISOString()
+  commitFromOtherDevice({
+    'dishes.json': [
+      ...repoRecords('dishes.json'),
+      { id: 'dish:борщ:phone', updatedAt: later, name: 'Борщ', kcal100: 60 },
+    ],
+    'intake/2026-02.json': [
+      ...repoRecords('intake/2026-02.json'),
+      { id: 'phone-intake', updatedAt: later, date: '2026-02-06', meal: 'dinner', dishId: 'dish:борщ:phone' },
+    ],
+  })
+  const pulled = await syncNow()
+  check('коммит другого устройства влит', has(pulled, 'получено записей 2'), line(pulled, 'получено'))
+
+  // Слияние ждёт секунду тишины, его запись уезжает сама через пять.
+  await sleep(8000)
+  const tomb = repoRecords('dishes.json')?.find((each) => each.id === 'dish:борщ:phone')
+  const moved = repoRecords('intake/2026-02.json')?.find((each) => each.id === 'phone-intake')
+  check(
+    'одноимённое блюдо слито и уехало обратно: надгробие с movedTo, запись у оставшегося',
+    tomb?.deleted === true && tomb?.movedTo === 'dish:борщ' && moved?.dishId === 'dish:борщ',
+    JSON.stringify({ tomb, moved }),
+  )
+  await go('/dishes')
+  await act(`set(document.querySelector('.search'), 'борщ')`)
+  await sleep(500)
+  const dishes = await screen()
+  check(
+    'на «Блюдах» один «Борщ» — с калорийностью поздней правки',
+    /Найдено 1 из 3 блюд(?!а)/.test(dishes) && has(dishes, 'Борщ · 60 ккал/100 г'),
+    `${line(dishes, 'Найдено')}; ${line(dishes, 'ккал/100')}`,
+  )
+  await go('/?day=2026-02-06')
+  const evening = await screen()
+  check('ужин другого устройства — в своём дне', has(evening, 'Борщ') && has(evening, '1 блюдо'), line(evening, 'Борщ'))
+
+  // ─ Токен не принят: причина словами, точка на шестерёнке красная.
+  github.reject = true
+  await go('/settings')
+  const rejected = await syncNow()
+  await go('/')
+  const red = await run(`document.querySelector('.gear .dot--error') !== null`)
+  check(
+    'токен не принят — причина словами и красная точка на шестерёнке',
+    has(rejected, 'Токен не принят') && red === true,
+    `${line(rejected, 'Токен не принят')}; точка ${red ? 'есть' : 'нет'}`,
+  )
+  github.reject = false
+
+  // ─ Связи нет: запись ждёт в очереди и доезжает, когда связь вернулась.
+  github.down = true
+  const before = repoRecords(`intake/${month}.json`)?.length ?? 0
+  await go('/')
+  await act(`[...document.querySelectorAll('.meal__pick .chip')].find((el) => el.textContent.trim() === 'Компот')?.click()`)
+  await sleep(6500)
+  const queued = await run(`document.querySelector('.gear .dot') !== null`)
+  await go('/settings')
+  const waiting = await screen()
+  check(
+    'без связи запись ждёт в очереди, точка горит',
+    queued === true && has(waiting, 'Ждут отправки: 1'),
+    `${line(waiting, 'Ждут отправки')}; точка ${queued ? 'есть' : 'нет'}`,
+  )
+
+  github.down = false
+  const sent = await syncNow()
+  const after = repoRecords(`intake/${month}.json`)?.length ?? 0
+  await go('/')
+  const dark = await run(`document.querySelector('.gear .dot') === null`)
+  check(
+    'связь вернулась — очередь доехала, точка погасла',
+    after === before + 1 && has(sent, 'Всё отправлено') && dark === true,
+    `в intake/${month}.json было ${before}, стало ${after}; ${line(sent, 'отправлен')}`,
+  )
+
+  await go('/settings')
+  await act(`document.querySelector('.check input')?.click()`)
+  await sleep(500)
+  await send('Fetch.disable')
 }
 
 /** Строка экрана с образцом внутри. Для внятного отчёта о непрошедшем. */

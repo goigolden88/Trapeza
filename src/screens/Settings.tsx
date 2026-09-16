@@ -8,6 +8,7 @@ import { backupNote, backupSummary } from '../ui/backup.ts'
 import { Fold } from '../ui/Fold.tsx'
 import { InstallNote } from '../ui/Install.tsx'
 import { ReportBug } from '../ui/Report.tsx'
+import { SyncSettings } from '../ui/SyncSettings.tsx'
 import { useSyncStatus } from '../ui/useSync.ts'
 import { isEmptyBase } from './firstRun.ts'
 import { ImportRecords } from './ImportRecords.tsx'
@@ -38,8 +39,8 @@ function describe(error: unknown): string {
  * оглавление. Итог у заголовка говорит, стоит ли разворачивать, — отсутствие
  * копии видно и у свёрнутого.
  *
- * Разделов два: «Экспорт и импорт» — копия файлом и импорт записей — и «О
- * приложении». Синхронизация встаёт первой в Этапе 2, markdown — в Этапе 5 (Р-16).
+ * Разделов три: «Синхронизация» — первой, «Экспорт и импорт» — копия файлом
+ * и импорт записей — и «О приложении». Markdown — в Этапе 5 (Р-16).
  */
 export function Settings() {
   const [state, setState] = useState<State>({ status: 'loading' })
@@ -70,6 +71,8 @@ export function Settings() {
       <header className="screen-head">
         <h1>Настройки</h1>
       </header>
+
+      <SyncSettings onChanged={load} />
 
       <DataTransfer onChanged={load} />
 

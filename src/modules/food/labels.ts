@@ -19,9 +19,11 @@ export const MEAL_NAMES: { readonly [M in Meal]: string } = {
 }
 
 /** Склонения — для сводок и отчёта импорта. */
-export const FORMS: { readonly [K in 'category' | 'dish' | 'intake' | 'record' | 'portion']: [string, string, string] } = {
+export const FORMS: { readonly [K in 'category' | 'dish' | 'dishOf' | 'intake' | 'record' | 'portion']: [string, string, string] } = {
   category: ['категория', 'категории', 'категорий'],
   dish: ['блюдо', 'блюда', 'блюд'],
+  // После «из»: «из 1 блюда», «из 3 блюд», «из 5 блюд».
+  dishOf: ['блюда', 'блюд', 'блюд'],
   intake: ['запись еды', 'записи еды', 'записей еды'],
   record: ['запись', 'записи', 'записей'],
   portion: ['порция', 'порции', 'порций'],
