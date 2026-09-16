@@ -1313,3 +1313,10 @@ span.plan-item__text {
 .meal__pick {
   margin-top: 8px;
 }
+
+/* «Как вчера» — строкой над списком блюд, выровнено по левому краю. */
+.meal__repeat {
+  display: block;
+  text-align: left;
+  min-height: 44px;
+}

@@ -586,6 +586,28 @@ async function scenario() {
     line(past, 'Компот'),
   )
 
+  // ─ Повтор приёма (Р-08, Р-17): на следующий день обед — «как вчера»,
+  // и в списке обеда первым стоит то, что было в обеде.
+  await go('/?day=2026-02-05')
+  await act(`byText('button', 'Обед')?.click()`)
+  await sleep(400)
+  // До 5 февраля в обеде были борщ (3-го, из копии) и компот (4-го) — по дню
+  // у каждого, при равенстве — по названию. Щи записаны в сентябре: позже дня.
+  const chips = await run(`[...document.querySelectorAll('.meal__pick .chip')].map((el) => el.textContent.trim())`)
+  check(
+    'порядок по частоте: наверху обеда — бывшее в обеде до этого дня, записанное позже — ниже',
+    chips?.[0] === 'БОРЩ' && chips?.[1] === 'Компот' && chips?.indexOf('Щи') > 1,
+    JSON.stringify(chips),
+  )
+  await act(`document.querySelector('.meal__repeat')?.click()`)
+  await sleep(700)
+  const repeated = await screen()
+  check(
+    '«как вчера» ставит вчерашний обед одним тапом, с порциями, и кнопка уходит',
+    has(repeated, 'Компот · 2 порции') && (await run(`document.querySelectorAll('.meal__repeat').length`)) === 0,
+    line(repeated, 'Компот'),
+  )
+
   // ─ Service worker: без него нет ни офлайна, ни автообновления.
   const worker = await run(`Promise.race([
     navigator.serviceWorker.ready.then((r) => r.active?.state ?? 'нет'),
@@ -609,7 +631,7 @@ async function scenario() {
   const offlineAbout = await screen()
   check(
     'без сети данные на месте',
-    /(?:^|\n)Записи еды\s*3/.test(offlineAbout.replace(/ /g, ' ')),
+    /(?:^|\n)Записи еды\s*4/.test(offlineAbout.replace(/ /g, ' ')),
     /(?:^|\n)(Записи еды\s*\d+)/.exec(offlineAbout)?.[1] ?? '',
   )
   await offline(false)

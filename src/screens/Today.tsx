@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { db } from '../core/db.ts'
-import { addDays, formatDateLong, nowIso, plural, type DateStr } from '../core/dates.ts'
+import { addDays, formatDate, formatDateLong, nowIso, plural, type DateStr } from '../core/dates.ts'
 import { ulid } from '../core/id.ts'
 import type { Dish, Intake, Meal } from '../core/model.ts'
 import { activeDishes } from '../modules/food/catalog.ts'
@@ -10,6 +10,7 @@ import { amountText, intakeInput, readIntake, stepPortions, type IntakeInput } f
 import { FORMS, MEAL_NAMES, MEALS } from '../modules/food/labels.ts'
 import { currentMeal, DEFAULT_MEAL_HOURS, MEAL_HOURS_KEY, readMealHours, type MealHours } from '../modules/food/meals.ts'
 import { normName } from '../modules/food/names.ts'
+import { byFrequency, previousMeal, repeatItems } from '../modules/food/repeat.ts'
 import { useFood, type Food } from '../modules/food/useFood.ts'
 import { useNow } from '../ui/useNow.ts'
 import { useToday } from '../ui/useToday.ts'
@@ -167,6 +168,7 @@ function Day({ day, isToday, data, hours }: { day: DateStr; isToday: boolean; da
           dayRecords={Object.values(meals).flat()}
           dishes={dishes}
           live={live}
+          intake={data.intake}
           save={save}
           onNote={setNote}
         />
@@ -185,6 +187,7 @@ function MealBlock({
   dayRecords,
   dishes,
   live,
+  intake,
   save,
   onNote,
 }: {
@@ -197,6 +200,7 @@ function MealBlock({
   dayRecords: Intake[]
   dishes: ReadonlyMap<string, Dish>
   live: Dish[]
+  intake: Intake[]
   save: Save
   onNote: (text: string) => void
 }) {
@@ -240,8 +244,17 @@ function MealBlock({
         </ul>
       )}
 
+      <Repeat meal={meal} day={day} records={records} intake={intake} dishes={dishes} save={save} onNote={onNote} />
+
       {open && (
-        <DishPicker meal={meal} day={day} records={records} live={live} save={save} onNote={onNote} />
+        <DishPicker
+          meal={meal}
+          day={day}
+          records={records}
+          ordered={byFrequency(live, intake, meal, day)}
+          save={save}
+          onNote={onNote}
+        />
       )}
     </section>
   )
@@ -388,22 +401,67 @@ function RecordEditor({
   )
 }
 
-/** Блюда приёма: тап — запись. Много блюд — поиск над списком, и видно, сколько найдено из скольких. */
-function DishPicker({
+/**
+ * «Как вчера» (Р-08): копия последнего такого же приёма до этого дня, без
+ * дублей — одним тапом. Было не вчера — на кнопке дата. Повторять нечего —
+ * кнопки нет.
+ */
+function Repeat({
   meal,
   day,
   records,
-  live,
+  intake,
+  dishes,
   save,
   onNote,
 }: {
   meal: Meal
   day: DateStr
   records: Intake[]
-  live: Dish[]
+  intake: Intake[]
+  dishes: ReadonlyMap<string, Dish>
   save: Save
   onNote: (text: string) => void
 }) {
+  const previous = previousMeal(intake, meal, day)
+  const items = previous ? repeatItems(previous.records, records) : []
+  if (!previous || items.length === 0) return null
+
+  const when = previous.date === addDays(day, -1) ? 'вчера' : formatDate(previous.date)
+  const names = items.map((item) => dishes.get(item.dishId)?.name ?? 'блюдо').join(', ')
+
+  async function apply() {
+    const made = items.map((item): Intake => ({ id: ulid(), updatedAt: nowIso(), date: day, meal, ...item }))
+    if (await save(() => db.putMany('intake', made))) onNote(`${MEAL_NAMES[meal]} — как ${when}: ${names}`)
+  }
+
+  return (
+    <button type="button" className="link-btn meal__repeat" onClick={() => void apply()}>
+      Как {when}: {names}
+    </button>
+  )
+}
+
+/**
+ * Блюда приёма по частоте (Р-08, Р-17): тап — запись. Много блюд — поиск над
+ * списком, и видно, сколько найдено из скольких.
+ */
+function DishPicker({
+  meal,
+  day,
+  records,
+  ordered,
+  save,
+  onNote,
+}: {
+  meal: Meal
+  day: DateStr
+  records: Intake[]
+  ordered: Dish[]
+  save: Save
+  onNote: (text: string) => void
+}) {
+  const live = ordered
   const [query, setQuery] = useState('')
   const present = new Set(records.map((record) => record.dishId))
   const key = normName(query)
