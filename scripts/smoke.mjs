@@ -448,7 +448,10 @@ async function scenario() {
       { name: 'борщ', category: 'Супы', portionGrams: 300, kcal100: 50 },
       { name: 'Компот', category: 'Напитки', kcalPortion: 80 },
     ],
-    intake: [{ date: '2026-02-04', meal: 'lunch', dish: 'Компот', portions: 2 }],
+    intake: [
+      { date: '2026-02-02', meal: 'lunch', dish: 'Компот' },
+      { date: '2026-02-04', meal: 'lunch', dish: 'Компот', portions: 2 },
+    ],
   }
   const importText = `Вот файл:\n\`\`\`json\n${JSON.stringify(importFile)}\n\`\`\``
   await act(`
@@ -459,7 +462,7 @@ async function scenario() {
   const planned = await screen()
   check(
     'импорт: до записи — сводка, уже имеющееся названо',
-    has(planned, 'Добавится: 2 категории, 1 блюдо, 1 запись еды') && has(planned, 'пропущено, не перезаписано: 1'),
+    has(planned, 'Добавится: 2 категории, 1 блюдо, 2 записи еды') && has(planned, 'пропущено, не перезаписано: 1'),
     `${line(planned, 'Добавится')}; ${line(planned, 'пропущено')}`,
   )
   await act(`startsWith('button', 'Загрузить')?.click()`)
@@ -471,10 +474,10 @@ async function scenario() {
     ['Категории', 'Блюда', 'Записи еды'].map(
       (label) => `${label} ${new RegExp(`(?:^|\\n)${label}\\s+(\\d+)`).exec(text)?.[1] ?? '?'}`,
     )
-  check('импорт записывает по кнопке', has(imported, 'Загружено записей: 4'), line(imported, 'Загружено'))
+  check('импорт записывает по кнопке', has(imported, 'Загружено записей: 5'), line(imported, 'Загружено'))
   check(
-    'после импорта — две категории, два блюда, две записи',
-    counts(imported).join('; ') === 'Категории 2; Блюда 2; Записи еды 2',
+    'после импорта — две категории, два блюда, три записи',
+    counts(imported).join('; ') === 'Категории 2; Блюда 2; Записи еды 3',
     counts(imported).join('; '),
   )
   await unfold('Как подготовить файл')
@@ -591,12 +594,13 @@ async function scenario() {
   await go('/?day=2026-02-05')
   await act(`byText('button', 'Обед')?.click()`)
   await sleep(400)
-  // До 5 февраля в обеде были борщ (3-го, из копии) и компот (4-го) — по дню
-  // у каждого, при равенстве — по названию. Щи записаны в сентябре: позже дня.
+  // До 5 февраля в обеде: компот — два дня (2-го и 4-го), борщ — один (3-го,
+  // из копии). По алфавиту борщ был бы первым — порядок проверяет частоту.
+  // Щи записаны в сентябре: позже дня, не в счёт.
   const chips = await run(`[...document.querySelectorAll('.meal__pick .chip')].map((el) => el.textContent.trim())`)
   check(
     'порядок по частоте: наверху обеда — бывшее в обеде до этого дня, записанное позже — ниже',
-    chips?.[0] === 'БОРЩ' && chips?.[1] === 'Компот' && chips?.indexOf('Щи') > 1,
+    chips?.[0] === 'Компот' && chips?.[1] === 'БОРЩ' && chips?.indexOf('Щи') > 1,
     JSON.stringify(chips),
   )
   await act(`document.querySelector('.meal__repeat')?.click()`)
@@ -642,7 +646,7 @@ async function scenario() {
   const offlineAbout = await screen()
   check(
     'без сети данные на месте',
-    /(?:^|\n)Записи еды\s*4/.test(offlineAbout.replace(/ /g, ' ')),
+    /(?:^|\n)Записи еды\s*5/.test(offlineAbout.replace(/ /g, ' ')),
     /(?:^|\n)(Записи еды\s*\d+)/.exec(offlineAbout)?.[1] ?? '',
   )
   await offline(false)
