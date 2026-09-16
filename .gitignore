@@ -1,0 +1,57 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
+
+# Dependency directories
+node_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# dotenv environment variable files
+.env
+.env.*
+!.env.example
+
+# Build output
+dist
+.cache
+
+# Vite files
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+.vite/
+
+# Личные данные. Репозиторий кода публичный — записям здесь не место.
+# Косая черта в начале обязательна: без неё правило накрывает любую папку
+# с таким именем, в том числе src/seed с кодом переноса.
+/seed/
+*.seed.json
+trapeza-*.json
+# Копия через «Поделиться» уходит .txt — Chrome на Android не отдаёт .json.
+trapeza-*.txt
+# Таблица, из которой переносится история (Р-09), живёт вне репозитория.
+*.xlsx
