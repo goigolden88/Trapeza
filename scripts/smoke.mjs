@@ -849,6 +849,14 @@ async function scenario() {
   // отличается не только хешем. Прошлый день — из адреса.
   await open(`${APP}?go=write`)
   check('после перезагрузки запись на месте', has(await screen(), 'Щи · 1,5 порции'))
+  const shortcutMeals = await run(`[...document.querySelectorAll('.meal')]
+    .filter((el) => el.querySelector('.meal__pick'))
+    .map((el) => el.querySelector('.fold__btn').textContent.trim())`)
+  check(
+    'ярлык «Записать» открывает список текущего приёма — Р-16',
+    JSON.stringify(shortcutMeals) === JSON.stringify(openMeals),
+    JSON.stringify(shortcutMeals),
+  )
   await go('/?day=2026-02-04')
   const past = await screen()
   check(
