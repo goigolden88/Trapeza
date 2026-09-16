@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <rect width="512" height="512" rx="112" fill="#1b1c1e"/>
-  <!-- Циферблат: кольцо -->
-  <circle cx="256" cy="256" r="150" fill="#f2b35b"/>
-  <circle cx="256" cy="256" r="126" fill="#1b1c1e"/>
-  <!-- Стрелки: минутная вверх, часовая вправо -->
-  <rect x="244" y="158" width="24" height="110" rx="12" fill="#ececee"/>
-  <rect x="244" y="244" width="88" height="24" rx="12" fill="#ececee"/>
-  <!-- Ось -->
-  <circle cx="256" cy="256" r="18" fill="#f2b35b"/>
+  <!-- Тарелка сверху: кольцо края -->
+  <circle cx="214" cy="256" r="140" fill="#7ccf8a"/>
+  <circle cx="214" cy="256" r="116" fill="#1b1c1e"/>
+  <!-- Дно тарелки — внутренний круг, приглушённый -->
+  <circle cx="214" cy="256" r="70" fill="#7ccf8a" opacity="0.35"/>
+  <!-- Ложка справа: черпак и черенок -->
+  <rect x="382" y="146" width="44" height="76" rx="22" fill="#ececee"/>
+  <rect x="392" y="206" width="24" height="164" rx="12" fill="#ececee"/>
 </svg>
