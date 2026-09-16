@@ -947,7 +947,7 @@ async function openMeal(meal) {
 }
 
 /**
- * Повтор приёма (Этап 4): шаблоны приёма и дня (Р-28). Последним и на днях
+ * Повтор приёма (Этап 4): шаблоны приёма и дня (Р-28), «Как обычно?» (Р-29). Последним; шаблоны — на днях
  * апреля, где других записей нет: счётчики прежних проверок не сдвигаются.
  */
 async function repeatScenario() {
@@ -1043,6 +1043,85 @@ async function repeatScenario() {
       line(templates, 'Обычный день ·').trim() === 'Обычный день · Завтрак: Щи, Компот · Обед: Борщ' &&
       line(templates, 'Обычный завтрак ·').trim() === 'Обычный завтрак · Щи, Компот',
     `${line(templates, 'Обычный день ·')}; ${line(templates, 'Обычный завтрак ·')}`,
+  )
+
+  // ─ «Как обычно?» (Р-29) — на сегодняшнем дне, о вчерашнем. Вчера по часам
+  // этого компьютера записей нет. Завтрак — шаблон приёма, обед — приём из
+  // шаблона дня, ужин — обычные блюда: торт из недель «Недели».
+  await go('/')
+  const usualRows = await run(`[...document.querySelectorAll('.usual__row')].map((el) => [
+    el.querySelector('.usual__what')?.textContent.trim(),
+    el.querySelector('.usual__yes')?.textContent.trim(),
+  ])`)
+  const firstTwo = JSON.stringify((usualRows ?? []).slice(0, 2))
+  check(
+    '«Как обычно?»: вчерашние приёмы — шаблон приёма, приём из шаблона дня, обычные блюда с основанием — Р-29',
+    firstTwo ===
+      JSON.stringify([
+        ['Вчера, завтрак — не записан', '«Обычный завтрак»: Щи, Компот'],
+        ['Вчера, обед — не записан', '«Обычный день»: Борщ'],
+      ]) &&
+      usualRows?.[2]?.[0] === 'Вчера, ужин — не записан' &&
+      /^Как обычно: Торт — по \d+ ужинам$/.test(usualRows?.[2]?.[1] ?? ''),
+    JSON.stringify(usualRows),
+  )
+
+  // Обычный день — четыре тапа: завтрак, обед, ужин «как обычно» и одно
+  // отклонение тапом по блюду в открытом приёме.
+  let taps = 0
+  for (let n = 0; n < 3; n++) {
+    await act(`document.querySelector('.usual__yes')?.click()`)
+    taps += 1
+    await sleep(800)
+  }
+  await act(`[...document.querySelectorAll('.meal__pick .chip')].find((el) => el.offsetParent !== null)?.click()`)
+  taps += 1
+  await sleep(800)
+  const yesterday = await run(`(() => {
+    const d = new Date(); d.setDate(d.getDate() - 1)
+    const pad = (n) => String(n).padStart(2, '0')
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+  })()`)
+  const leftYesterday = await run(`[...document.querySelectorAll('.usual__what')].filter((el) => el.textContent.startsWith('Вчера')).length`)
+  await go(`/?day=${yesterday}`)
+  const filled = await run(`[...document.querySelectorAll('.meal')].slice(0, 3).map((el) => el.querySelector('.meal__records')?.innerText.replace(/\\s+/g, ' ').trim() ?? '')`)
+  check(
+    'обычный день — четыре тапа: три «как обычно» и одно отклонение',
+    taps === 4 && leftYesterday === 0 && filled?.[0] === 'Щи Компот' && filled?.[1] === 'Борщ' && filled?.[2] === 'Торт',
+    `тапов ${taps}; вчера осталось ${leftYesterday}; ${JSON.stringify(filled)}`,
+  )
+
+  // О сегодняшнем спрашивается только до текущего приёма (Р-29).
+  await go('/')
+  const expectedToday = ['breakfast', 'lunch', 'dinner']
+    .slice(0, ['breakfast', 'lunch', 'dinner'].indexOf(current))
+    .map((meal) => `Сегодня, ${{ breakfast: 'завтрак', lunch: 'обед', dinner: 'ужин' }[meal]} — не записан`)
+  const todayRows = await run(`[...document.querySelectorAll('.usual__what')].map((el) => el.textContent.trim())`)
+  check(
+    'о сегодняшнем — только приёмы до текущего: текущий открыт сам',
+    JSON.stringify(todayRows) === JSON.stringify(expectedToday),
+    `приём ${current}; ${JSON.stringify(todayRows)}`,
+  )
+
+  // «Не было»: вчерашний ужин удалён — вопрос вернулся; отметка убирает его,
+  // и после перезагрузки он не возвращается.
+  await go(`/?day=${yesterday}`)
+  await act(`document.querySelector('[aria-label="Поправить: Торт"]')?.click()`)
+  await sleep(400)
+  await act(`byText('button', 'Удалить')?.click()`)
+  await sleep(800)
+  await go('/')
+  const dinnerRow = `[...document.querySelectorAll('.usual__row')].find((el) => el.querySelector('.usual__what')?.textContent.trim() === 'Вчера, ужин — не записан')`
+  const asked = await run(`${dinnerRow} !== undefined`)
+  await act(`${dinnerRow}?.querySelectorAll('button')[1]?.click()`)
+  await sleep(800)
+  const skipNote = await status()
+  await open(APP)
+  const afterSkip = await run(`${dinnerRow} !== undefined`)
+  check(
+    '«Не было» убирает приём из вопроса и переживает перезагрузку — Р-29',
+    asked === true && skipNote === 'Вчера, ужин — не было' && afterSkip === false,
+    `спрошен ${asked}; «${skipNote}»; после перезагрузки ${afterSkip ? 'снова спрошен' : 'нет'}`,
   )
 }
 

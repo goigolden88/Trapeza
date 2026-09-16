@@ -29,6 +29,17 @@ import {
   type TemplateKind,
 } from '../modules/food/templates.ts'
 import { useFood, type Food } from '../modules/food/useFood.ts'
+import {
+  offerText,
+  readSkipped,
+  SKIPPED_KEY,
+  skipKey,
+  unansweredMeals,
+  usualOffer,
+  withSkipped,
+  type Offer,
+  type Unanswered,
+} from '../modules/food/usual.ts'
 import { weekRoute } from '../modules/food/week.ts'
 import { Fold } from '../ui/Fold.tsx'
 import { useNow } from '../ui/useNow.ts'
@@ -181,6 +192,9 @@ function Day({ day, today, data, hours }: { day: DateStr; today: DateStr; data: 
         <p className="muted" role="status">
           {note}
         </p>
+      )}
+      {current !== null && (
+        <Usual today={today} current={current} data={data} dishes={dishes} save={save} onNote={setNote} />
       )}
       <DayTemplates
         day={day}
@@ -496,6 +510,89 @@ function Repeat({
     <button type="button" className="link-btn meal__repeat" onClick={() => void apply()}>
       Как {when}: {names}
     </button>
+  )
+}
+
+/**
+ * «Как обычно?» (Р-29) — наверху сегодняшнего дня: вчерашние завтрак, обед
+ * и ужин без записей и сегодняшние до текущего приёма. Одним тапом — шаблон
+ * или обычные блюда приёма; «Не было» — приём больше не спрашивается. Не
+ * складывается: это вопрос, и он уходит, когда на него ответили.
+ */
+function Usual({
+  today,
+  current,
+  data,
+  dishes,
+  save,
+  onNote,
+}: {
+  today: DateStr
+  current: Meal
+  data: Data
+  dishes: ReadonlyMap<string, Dish>
+  save: Save
+  onNote: (text: string) => void
+}) {
+  // null — отметки «Не было» ещё не прочитаны: без них вопрос мелькнул бы зря.
+  const [skipped, setSkipped] = useState<string[] | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    db.settings
+      .get<unknown>(SKIPPED_KEY)
+      .then((stored) => alive && setSkipped(readSkipped(stored, today)))
+      .catch(() => alive && setSkipped([]))
+    return () => {
+      alive = false
+    }
+  }, [today])
+
+  if (skipped === null) return null
+  const rows = unansweredMeals(data.intake, today, current, skipped).flatMap((row) => {
+    const offer = usualOffer(row.meal, row.date, data.templates, data.intake, dishes)
+    return offer ? [{ ...row, offer }] : []
+  })
+  if (rows.length === 0) return null
+
+  const when = (row: Unanswered) => `${row.date === today ? 'Сегодня' : 'Вчера'}, ${MEAL_NAMES[row.meal].toLowerCase()}`
+
+  async function accept(row: Unanswered & { offer: Offer }) {
+    const made = intakeFrom(
+      row.offer.items.map((item) => ({ ...item, meal: row.meal })),
+      row.date,
+    )
+    if (await save(() => db.putMany('intake', made))) onNote(`${when(row)} — ${offerText(row.offer, row.meal, dishes)}`)
+  }
+
+  async function skip(row: Unanswered) {
+    const done = await save(async () => {
+      const next = withSkipped(await db.settings.get<unknown>(SKIPPED_KEY), today, row.date, row.meal)
+      await db.settings.set(SKIPPED_KEY, next)
+      setSkipped(next)
+    })
+    if (done) onNote(`${when(row)} — не было`)
+  }
+
+  return (
+    <section className="block usual">
+      <h2>Как обычно?</h2>
+      <ul className="plain">
+        {rows.map((row) => (
+          <li key={skipKey(row.date, row.meal)} className="usual__row">
+            <p className="usual__what">{when(row)} — не записан</p>
+            <div className="row row--wrap">
+              <button type="button" className="btn btn--primary usual__yes" onClick={() => void accept(row)}>
+                {offerText(row.offer, row.meal, dishes)}
+              </button>
+              <button type="button" className="btn" onClick={() => void skip(row)}>
+                Не было
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

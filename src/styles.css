@@ -1335,6 +1335,25 @@ span.plan-item__text {
   border-bottom: 1px solid var(--line);
 }
 
+/* «Как обычно?» (Р-29): строка на приём — что пропущено, под ней кнопка
+   с составом во всю доступную ширину и «Не было». Длинный состав
+   переносится, а не режется. */
+.usual__row {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.usual__what {
+  margin: 0 0 6px;
+}
+
+.usual__yes {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  padding: 8px 14px;
+  text-align: left;
+}
+
 /* Шаблоны дня — над приёмами; сохранение шаблона — формой на месте кнопки (Р-28). */
 .day-templates {
   margin-bottom: 8px;
