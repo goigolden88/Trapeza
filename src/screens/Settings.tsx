@@ -4,6 +4,19 @@ import { db } from '../core/db.ts'
 import { today } from '../core/dates.ts'
 import { SCHEMA_VERSION, SYNCED_STORES } from '../core/model.ts'
 import type { SyncedStore } from '../core/model.ts'
+import {
+  checkReminder,
+  disableReminders,
+  enableReminders,
+  readWakes,
+  readWindow,
+  reminderStatus,
+  saveWindow,
+  type ReminderStatus,
+  type ReminderWindow,
+  type RemindResult,
+  type Wake,
+} from '../notify.ts'
 import { backupNote, backupSummary } from '../ui/backup.ts'
 import { Fold } from '../ui/Fold.tsx'
 import { InstallNote } from '../ui/Install.tsx'
@@ -39,8 +52,8 @@ function describe(error: unknown): string {
  * оглавление. Итог у заголовка говорит, стоит ли разворачивать, — отсутствие
  * копии видно и у свёрнутого.
  *
- * Разделов три: «Синхронизация» — первой, «Экспорт и импорт» — копия файлом
- * и импорт записей — и «О приложении». Markdown — в Этапе 5 (Р-16).
+ * Разделы: «Синхронизация» — первой, «Экспорт и импорт» — копия файлом
+ * и импорт записей, «Напоминания» (Р-30) и «О приложении». Markdown — в Этапе 5 (Р-16).
  */
 export function Settings() {
   const [state, setState] = useState<State>({ status: 'loading' })
@@ -76,7 +89,233 @@ export function Settings() {
 
       <DataTransfer onChanged={load} />
 
+      <Reminders />
+
       <About state={state} />
+    </>
+  )
+}
+
+
+// ─── Напоминания (Р-30) — раздел «Делу Время» с d86f0aa, у них — из «Дневников» ─
+
+const REMINDER_TEXT: Record<ReminderStatus, string> = {
+  unsupported:
+    'Этот браузер не умеет напоминать, когда приложение закрыто. Напоминания работают ' +
+    'в Chrome на Android у установленного приложения.',
+  denied: 'Уведомления для этого сайта запрещены в настройках браузера. Разрешить их можно только там.',
+  off:
+    'Примерно раз в сутки приложение напомнит, если сегодня ничего не записано или вчера не записан ' +
+    'завтрак, обед или ужин. Приём, отмеченный «Не было», пропуском не считается. Даже закрытое.',
+  'not-installed':
+    'Уведомления разрешены, но фоновую проверку браузер не дал. Так бывает, когда приложение ' +
+    'открыто во вкладке, а не установлено иконкой.',
+  on: 'Включено. Браузер проверяет примерно раз в сутки, точное время выбирает сам.',
+}
+
+/** Итог у свёрнутого раздела: включены ли. */
+const REMINDER_SUMMARY: Record<ReminderStatus, string> = {
+  unsupported: 'браузер не умеет',
+  denied: 'запрещены',
+  off: 'выключены',
+  'not-installed': 'выключены',
+  on: 'включены',
+}
+
+const CHECK_TEXT: Record<RemindResult | 'denied' | 'unsupported', string> = {
+  shown: 'Уведомление показано.',
+  quiet: 'Уведомление показано без звука.',
+  nothing:
+    'Напоминать не о чем — вчерашние приёмы и сегодняшний день записаны. Пришло пустое уведомление, ' +
+    'чтобы было видно, что они доходят.',
+  already: 'Сегодня уже напоминало.',
+  failed: 'Показать уведомление не вышло.',
+  denied: 'Уведомления запрещены — показать нечего.',
+  unsupported: REMINDER_TEXT.unsupported,
+}
+
+/** Чем кончилось фоновое пробуждение — строка журнала. */
+const WAKE_TEXT: Record<RemindResult, string> = {
+  shown: 'показано со звуком',
+  quiet: 'показано без звука — вне окна',
+  nothing: 'напоминать было не о чем',
+  already: 'сегодня уже напоминало',
+  failed: 'показать не вышло',
+}
+
+/**
+ * Напоминание о незаполненном дне.
+ *
+ * Включается кнопкой, а не само: разрешение на уведомления браузер
+ * спрашивает только по действию человека. «Проверить сейчас» — чтобы
+ * не ждать сутки, прежде чем узнать, работает ли.
+ */
+function Reminders() {
+  const [status, setStatus] = useState<ReminderStatus | null>(null)
+  const [hours, setHours] = useState<ReminderWindow | null>(null)
+  const [wakes, setWakes] = useState<Wake[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState('')
+
+  useEffect(() => {
+    void reminderStatus()
+      .then(setStatus)
+      .catch(() => setStatus('unsupported'))
+    void readWindow().then(setHours)
+    void readWakes()
+      .then(setWakes)
+      .catch(() => setWakes([]))
+  }, [])
+
+  async function pickHours(next: ReminderWindow) {
+    setHours(next)
+    await saveWindow(next)
+  }
+
+  async function act(action: () => Promise<void>) {
+    setBusy(true)
+    setNote('')
+    try {
+      await action()
+    } catch (failure) {
+      setNote(describe(failure))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const summary =
+    status === null
+      ? undefined
+      : status === 'on' && hours
+        ? `включены, ${hours.from}–${hours.to}`
+        : REMINDER_SUMMARY[status]
+  const usable = status !== null && status !== 'unsupported' && status !== 'denied'
+
+  // Пока состояние читается, раздел без итога и без содержимого: мигать
+  // «не поддерживается» на полсекунды незачем.
+  return (
+    <Fold id="settings:reminders" title="Напоминания" summary={summary} folded>
+      {status !== null && (
+        <>
+          <p className="muted">{REMINDER_TEXT[status]}</p>
+
+          <div className="row row--wrap">
+            {(status === 'off' || status === 'not-installed') && (
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                onClick={() => void act(async () => setStatus(await enableReminders()))}
+              >
+                Включить напоминания
+              </button>
+            )}
+            {status === 'on' && (
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                onClick={() =>
+                  void act(async () => {
+                    await disableReminders()
+                    setStatus('off')
+                  })
+                }
+              >
+                Выключить
+              </button>
+            )}
+            {usable && (
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                onClick={() => void act(async () => setNote(CHECK_TEXT[await checkReminder()]))}
+              >
+                Проверить сейчас
+              </button>
+            )}
+          </div>
+
+          {note && <p className="muted">{note}</p>}
+
+          {usable && hours && (
+            <>
+              <div className="row row--wrap">
+                <HourField
+                  label="Со звуком с"
+                  value={hours.from}
+                  onPick={(from) => void pickHours({ ...hours, from })}
+                />
+                <HourField label="до" value={hours.to} onPick={(to) => void pickHours({ ...hours, to })} />
+              </div>
+              <p className="muted">
+                Вне этих часов уведомление приходит без звука и ждёт в шторке. Если в тот же день
+                браузер проверит ещё раз уже в эти часы — повторит со звуком. Часы — по времени
+                этого устройства.
+              </p>
+            </>
+          )}
+
+          {usable && <WakeLog wakes={wakes} />}
+        </>
+      )}
+    </Fold>
+  )
+}
+
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour)
+
+function HourField({ label, value, onPick }: { label: string; value: number; onPick: (hour: number) => void }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onPick(Number(event.target.value))}>
+        {HOURS.map((hour) => (
+          <option key={hour} value={hour}>{`${hour}:00`}</option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function wakeTime(at: string): string {
+  return new Date(at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+/**
+ * Журнал фоновых проверок: будит ли их браузер вообще и чем они кончаются.
+ * Без него «ни разу не пришло само» — три неразличимых случая: не будил;
+ * будил, но напоминать было не о чем; будил, но сегодня уже было.
+ */
+function WakeLog({ wakes }: { wakes: Wake[] | null }) {
+  if (wakes === null) return null
+
+  const last = wakes[0]
+  if (!last) {
+    return <p className="muted">Фоновая проверка на этом устройстве ещё ни разу не просыпалась.</p>
+  }
+
+  return (
+    <>
+      <p className="muted">
+        Фоновая проверка последний раз: {wakeTime(last.at)} — {WAKE_TEXT[last.result]}.
+      </p>
+      {wakes.length > 1 && (
+        <Fold id="settings:reminders:wakes" title="Все пробуждения" summary={wakes.length} sub folded>
+          <table className="stats">
+            <tbody>
+              {wakes.map((wake) => (
+                <tr key={wake.at}>
+                  <td>{wakeTime(wake.at)}</td>
+                  <td className="muted">{WAKE_TEXT[wake.result]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Fold>
+      )}
     </>
   )
 }

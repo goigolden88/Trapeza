@@ -1123,6 +1123,37 @@ async function repeatScenario() {
     asked === true && skipNote === 'Вчера, ужин — не было' && afterSkip === false,
     `спрошен ${asked}; «${skipNote}»; после перезагрузки ${afterSkip ? 'снова спрошен' : 'нет'}`,
   )
+
+  // ─ Напоминание (Р-30). Фоновую проверку браузер вне установленного
+  // приложения не даёт; «Проверить сейчас» — тот же расчёт, что у service
+  // worker. Вчера завтрак и обед записаны, ужин — «Не было», сегодня записи
+  // есть: напоминать не о чем. Без учёта «Не было» ужин был бы пропуском.
+  await go('/settings')
+  const granted = await grantNotifications()
+  await unfold('Напоминания')
+  await act(`byText('button', 'Проверить сейчас')?.click()`)
+  await sleep(1500)
+  const reminders = await screen()
+  check(
+    'напоминание: «Проверить сейчас» доходит; «Не было» — не пропуск, напоминать не о чем — Р-30',
+    granted && line(reminders, 'Напоминать не о чем').trim().startsWith('Напоминать не о чем — вчерашние приёмы и сегодняшний день записаны.'),
+    line(reminders, 'Напоминать не о чем') || line(reminders, 'Уведомление'),
+  )
+}
+
+/**
+ * Разрешение на уведомления для адреса приложения — из прогона «Делу Время»
+ * с d86f0aa. Без него проверка напоминания упирается в вопрос о разрешении,
+ * на который в безголовом браузере некому ответить. Выдаётся из сессии самой
+ * вкладки: через отдельное соединение с браузером молча не работает.
+ */
+async function grantNotifications() {
+  const reply = await send('Browser.grantPermissions', {
+    origin: new URL(APP).origin,
+    permissions: ['notifications'],
+  })
+  // Ответ с ошибкой приходит без `result` — `send` отдаёт undefined.
+  return reply !== undefined
 }
 
 /**

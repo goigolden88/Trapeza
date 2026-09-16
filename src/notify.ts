@@ -1,9 +1,11 @@
 /**
- * Напоминания: о незаполненном дне (Р-14, Р-24) и об обзоре недели (Р-51).
+ * Напоминание о незаполненном дне (Р-30 «Трапезы»).
  *
- * Механика — «Дневников», их `notify.ts` с коммита `a913dcb`: окно со
- * звуком, тихое вне окна, со звуком не чаще раза в день, журнал
- * пробуждений. Своё здесь — о чём напоминать и имя фоновой проверки.
+ * Взято из «Делу Время» с `d86f0aa` (Р-06, Р-16), у них — из «Дневников»:
+ * окно со звуком, тихое вне окна, со звуком не чаще раза в день, журнал
+ * пробуждений. Своё здесь — о чём напоминать: `modules/food/remind.ts`.
+ * Тема одна; список тем оставлен, как у них, — вторая встаёт строкой.
+ * Номера Р-NN ниже без пометки — их решения.
  *
  * Одна функция на два вызова: service worker зовёт её, когда браузер будит
  * его фоновой синхронизацией, а «Настройки» — по кнопке «Проверить сейчас».
@@ -20,13 +22,12 @@
 
 import { db } from './core/db.ts'
 import { toDateStr } from './core/dates.ts'
-import { unfilledNotice } from './modules/time/remind.ts'
-import { reviewNotice } from './screens/review.ts'
-import { readScreenNames } from './ui/screenNames.ts'
+import { unfilledNotice } from './modules/food/remind.ts'
+import { readSkipped, SKIPPED_KEY } from './modules/food/usual.ts'
 
 /**
  * Имя фоновой проверки (Р-24). Общее на все напоминания приложения:
- * обзор недели встанет под него же. На установленных копиях проверка
+ * вторая тема встанет под него же. На установленных копиях проверка
  * заведена под этим именем — переименование выключило бы её молча.
  */
 export const REMINDER_TAG = 'remind'
@@ -42,9 +43,6 @@ const QUIET_DAY = 'reminderQuietDay'
 const WINDOW = 'reminderWindow'
 /** Последние фоновые пробуждения. */
 const LOG = 'reminderLog'
-/** То же для напоминания об обзоре недели (Р-51): свои дни, прежние ключи смысла не меняют. */
-const REVIEW_LOUD_DAY = 'reminderReviewDay'
-const REVIEW_QUIET_DAY = 'reminderReviewQuietDay'
 
 /** Чаще раза в полсуток браузер будить не станет, и просить незачем. */
 const MIN_INTERVAL = 12 * 60 * 60 * 1000
@@ -169,22 +167,15 @@ async function decide(
   now: Date,
 ): Promise<RemindResult> {
   const day = toDateStr(now)
-  // Экран в тексте — своим именем этого устройства (Р-26).
-  const [names, blocks, reviews] = await Promise.all([readScreenNames(), db.getAll('time'), db.getAll('reviews')])
+  // «Не было» — отметки этого устройства (Р-29 «Трапезы»): пропуском не считаются.
+  const [intake, skipped] = await Promise.all([db.getAll('intake'), db.settings.get<unknown>(SKIPPED_KEY)])
   const topics: Topic[] = [
     {
-      notice: unfilledNotice(blocks, day, names.time),
+      notice: unfilledNotice(intake, day, readSkipped(skipped, day)),
       tag: 'day',
-      target: '/time',
+      target: '/',
       loudKey: LOUD_DAY,
       quietKey: QUIET_DAY,
-    },
-    {
-      notice: reviewNotice(reviews, day),
-      tag: 'review',
-      target: '/review',
-      loudKey: REVIEW_LOUD_DAY,
-      quietKey: REVIEW_QUIET_DAY,
     },
   ]
 
@@ -199,7 +190,7 @@ async function decide(
 
 /**
  * Одно напоминание при пробуждении — со своими днями громкого и тихого:
- * громкое о дне не глушит напоминание об обзоре (Р-51). Окно — общее.
+ * громкое одной темы не глушит другую (их Р-51). Окно — общее.
  */
 async function remindTopic(
   registration: ServiceWorkerRegistration,
@@ -243,9 +234,9 @@ async function showAll(registration: ServiceWorkerRegistration, topics: readonly
       registration,
       {
         title: 'Напоминать не о чем',
-        body: 'За сегодня время уже учтено, обзор недели не ждёт. Уведомление пришло, чтобы было видно: они доходят.',
+        body: 'Вчерашние приёмы и сегодняшний день записаны. Уведомление пришло, чтобы было видно: они доходят.',
         tag: 'day',
-        target: '/time',
+        target: '/',
       },
       true,
     )
