@@ -13,6 +13,7 @@
 import { nowIso, type DateStr } from '../../core/dates.ts'
 import { ulid } from '../../core/id.ts'
 import type { Dish, Intake, Meal, Template } from '../../core/model.ts'
+import { amountText } from './forms.ts'
 import { MEAL_NAMES, MEALS } from './labels.ts'
 import { normName } from './names.ts'
 
@@ -214,4 +215,24 @@ export function intakeFrom(items: readonly PlacedItem[], day: DateStr): Intake[]
 /** Блюда шаблона одного приёма: у шаблона приёма — все, у шаблона дня — этого приёма. */
 export function itemsForMeal(template: Template, meal: Meal): PlacedItem[] {
   return placedItems(template).filter((item) => item.meal === meal)
+}
+
+/**
+ * Состав словами: у шаблона приёма — «Каша 2 порции, Компот»; у шаблона
+ * дня — по приёмам: «Завтрак: Каша, Компот · Обед: Суп».
+ */
+export function templateText(template: Template, dishes: ReadonlyMap<string, Dish>): string {
+  const items = placedItems(template)
+  const names = (list: readonly PlacedItem[]) =>
+    list
+      .map((item) => {
+        const amount = amountText(item)
+        return `${dishes.get(item.dishId)?.name ?? 'блюдо удалено'}${amount ? ` ${amount}` : ''}`
+      })
+      .join(', ')
+  if (template.meal !== undefined) return names(items)
+  return MEALS.flatMap((meal) => {
+    const here = items.filter((item) => item.meal === meal)
+    return here.length > 0 ? [`${MEAL_NAMES[meal]}: ${names(here)}`] : []
+  }).join(' · ')
 }

@@ -1335,8 +1335,19 @@ span.plan-item__text {
   border-bottom: 1px solid var(--line);
 }
 
-/* «Как вчера» — строкой над списком блюд, выровнено по левому краю. */
-.meal__repeat {
+/* Шаблоны дня — над приёмами; сохранение шаблона — формой на месте кнопки (Р-28). */
+.day-templates {
+  margin-bottom: 8px;
+}
+
+.template-save {
+  margin: 4px 0 8px;
+}
+
+/* «Как вчера», шаблоны и «Сохранить как шаблон» — строками над списком
+   блюд, выровнено по левому краю. */
+.meal__repeat,
+.meal__save {
   display: block;
   text-align: left;
   min-height: 44px;

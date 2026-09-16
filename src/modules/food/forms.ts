@@ -185,7 +185,7 @@ export function readIntake(
 }
 
 /** Порция записи словами: «1,5 порции», «250 г», пусто — одна порция. */
-export function amountText(record: Intake): string {
+export function amountText(record: Pick<Intake, 'grams' | 'portions'>): string {
   if (record.grams !== undefined) return `${numberText(record.grams)} г`
   if (record.portions === undefined || record.portions === 1) return ''
   return portionsText(record.portions)

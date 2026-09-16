@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { db } from '../core/db.ts'
 import { plural } from '../core/dates.ts'
 import { ulid } from '../core/id.ts'
-import type { Category, Dish } from '../core/model.ts'
+import type { Category, Dish, Template } from '../core/model.ts'
 import {
   activeCategories,
   activeDishes,
@@ -20,8 +20,18 @@ import {
   sortCategories,
 } from '../modules/food/catalog.ts'
 import { applyDish, dishFacts, dishInput, nameProblemText, readDish, type DishInput } from '../modules/food/forms.ts'
-import { FORMS } from '../modules/food/labels.ts'
+import { FORMS, MEAL_NAMES, MEALS } from '../modules/food/labels.ts'
 import { cleanName, nameProblem, normName } from '../modules/food/names.ts'
+import {
+  checkTemplateName,
+  kindOf,
+  moveTemplate,
+  NAME_PROBLEM_TEXT,
+  renameTemplate,
+  templatesOf,
+  templateText,
+  type TemplateKind,
+} from '../modules/food/templates.ts'
 import { useFood, writePlan, type Food } from '../modules/food/useFood.ts'
 import { Fold } from '../ui/Fold.tsx'
 
@@ -132,6 +142,15 @@ export function Dishes() {
               )}
             </>
           )}
+
+          <Fold
+            id="dishes:templates"
+            title="Шаблоны"
+            summary={data.templates.filter((template) => !template.deleted).length}
+            folded
+          >
+            <Templates data={data} save={save} />
+          </Fold>
 
           <Fold
             id="dishes:categories"
@@ -416,6 +435,147 @@ function RemoveDish({ dish, data, save }: { dish: Dish; data: Data; save: Save }
 
 // ─── Категории ─────────────────────────────────────────────────────────────
 
+// ─── Шаблоны ───────────────────────────────────────────────────────────────
+
+/** Виды шаблонов в порядке блока: дня, затем по приёмам. */
+const TEMPLATE_KINDS: readonly TemplateKind[] = ['day', ...MEALS]
+
+/**
+ * Шаблоны приёмов и дня (Р-28): состав, переименование, удаление, порядок
+ * стрелками внутри вида. Заводятся и меняют состав на «Сегодня» — из
+ * записанного, отдельной формы состава нет.
+ */
+function Templates({ data, save }: { data: Data; save: Save }) {
+  const [open, setOpen] = useState<string | null>(null)
+  const dishes = new Map(data.dishes.map((dish) => [dish.id, dish]))
+  const groups = TEMPLATE_KINDS.map((kind) => ({ kind, list: templatesOf(data.templates, kind) })).filter(
+    (group) => group.list.length > 0,
+  )
+
+  if (groups.length === 0) {
+    return (
+      <p className="muted">
+        Шаблонов пока нет. Заводятся на «Сегодня» из записанного: «Сохранить как шаблон» — у приёма, «Сохранить день
+        как шаблон» — под приёмами.
+      </p>
+    )
+  }
+
+  return (
+    <>
+      <p className="muted">
+        Состав меняется на «Сегодня»: сохраните записанный приём или день под тем же названием — «Заменить состав».
+      </p>
+      {groups.map(({ kind, list }) => (
+        <div key={kind}>
+          <h3 className="pick__label">{kind === 'day' ? 'Шаблоны дня' : MEAL_NAMES[kind]}</h3>
+          <ul className="plain">
+            {list.map((template, index) => (
+              <TemplateRow
+                key={template.id}
+                template={template}
+                text={templateText(template, dishes)}
+                data={data}
+                save={save}
+                first={index === 0}
+                last={index === list.length - 1}
+                open={open === template.id}
+                onToggle={() => setOpen(open === template.id ? null : template.id)}
+              />
+            ))}
+          </ul>
+        </div>
+      ))}
+    </>
+  )
+}
+
+function TemplateRow({
+  template,
+  text,
+  data,
+  save,
+  first,
+  last,
+  open,
+  onToggle,
+}: {
+  template: Template
+  text: string
+  data: Data
+  save: Save
+  first: boolean
+  last: boolean
+  open: boolean
+  onToggle: () => void
+}) {
+  const [name, setName] = useState(template.name)
+  const [problem, setProblem] = useState('')
+
+  function move(step: -1 | 1) {
+    void save(() => db.putMany('templates', moveTemplate(data.templates, template.id, step)))
+  }
+
+  async function rename() {
+    const check = checkTemplateName(data.templates, name, kindOf(template), template.id)
+    if (!check.ok) {
+      setProblem(NAME_PROBLEM_TEXT[check.problem])
+      return
+    }
+    setProblem('')
+    await save(() => db.put('templates', renameTemplate(template, name)))
+  }
+
+  function remove() {
+    if (!window.confirm(`Удалить шаблон «${template.name}»? Записанное по нему остаётся.`)) return
+    void save(() => db.remove('templates', template.id))
+  }
+
+  return (
+    <li className="cat">
+      <div className="cat__head">
+        <button type="button" className="plain-btn cat__name" aria-expanded={open} onClick={onToggle}>
+          {template.name}
+          <span className="muted"> · {text}</span>
+        </button>
+        <button type="button" className="icon-btn" aria-label={`${template.name} — выше`} disabled={first} onClick={() => move(-1)}>
+          ↑
+        </button>
+        <button type="button" className="icon-btn" aria-label={`${template.name} — ниже`} disabled={last} onClick={() => move(1)}>
+          ↓
+        </button>
+      </div>
+
+      {open && (
+        <div className="cat__body">
+          <form
+            className="form"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault()
+              void rename()
+            }}
+          >
+            <label className="field">
+              <span>Название</span>
+              <input name="template-rename" value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            {problem && <p className="error">{problem}</p>}
+            <div className="form__actions">
+              <button type="button" className="btn btn--danger" onClick={remove}>
+                Удалить
+              </button>
+              <button type="submit" className="btn btn--primary">
+                Сохранить
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </li>
+  )
+}
+
 function Categories({ data, save }: { data: Data; save: Save }) {
   const [name, setName] = useState('')
   const [group, setGroup] = useState('')
@@ -440,7 +600,7 @@ function Categories({ data, save }: { data: Data; save: Save }) {
   return (
     <>
       <p className="muted">
-        Порядок категорий — порядок в итогах дня. Группа сворачивает категории в сводках: «Супы обычные» и «Супы
+        Порядок категорий — порядок в итогах дня и в выборе блюда в приёме. Группа сворачивает категории в сводках: «Супы обычные» и «Супы
         особые» — в «Супы».
       </p>
       <ul className="plain">

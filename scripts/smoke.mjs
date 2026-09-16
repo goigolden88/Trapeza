@@ -923,6 +923,127 @@ async function scenario() {
   await offline(false)
 
   await weekScenario()
+  await repeatScenario()
+}
+
+/** Строка после записи — ровно её текст. */
+const status = () => run(`document.querySelector('[role="status"]')?.textContent.trim() ?? ''`)
+
+/** Кнопка с текстом внутри приёма. */
+const inMeal = (meal) => `[...document.querySelectorAll('.meal')]
+  .find((el) => el.querySelector('.fold__btn')?.textContent.trim() === ${JSON.stringify(meal)})
+  ?.querySelectorAll('button')`
+const clickInMeal = (meal, label) =>
+  act(`[...(${inMeal(meal)} ?? [])].find((el) => el.textContent.trim() === ${JSON.stringify(label)})?.click()`)
+const buttonsInMeal = (meal) => run(`[...(${inMeal(meal)} ?? [])].map((el) => el.textContent.trim())`)
+
+/** Открывает приём на прошлом дне, если его список закрыт. */
+async function openMeal(meal) {
+  const opened = await run(`[...document.querySelectorAll('.meal')]
+    .find((el) => el.querySelector('.fold__btn')?.textContent.trim() === ${JSON.stringify(meal)})
+    ?.querySelector('.meal__pick') != null`)
+  if (!opened) await act(`byText('button', ${JSON.stringify(meal)})?.click()`)
+  await sleep(400)
+}
+
+/**
+ * Повтор приёма (Этап 4): шаблоны приёма и дня (Р-28). Последним и на днях
+ * апреля, где других записей нет: счётчики прежних проверок не сдвигаются.
+ */
+async function repeatScenario() {
+  // ─ Шаблон приёма и дня из записанного: 6 апреля — завтрак из щей и
+  // компота, обед — борщ.
+  await go('/?day=2026-04-06')
+  await openMeal('Завтрак')
+  await tapChip('Щи')
+  await sleep(500)
+  await tapChip('Компот')
+  await sleep(500)
+  await openMeal('Обед')
+  await tapChip('Борщ')
+  await sleep(700)
+
+  await clickInMeal('Завтрак', 'Сохранить как шаблон')
+  await sleep(300)
+  await act(`byText('button', 'Сохранить')?.click()`)
+  await sleep(700)
+  const savedMeal = await status()
+  check(
+    'шаблон приёма сохраняется из записанного, названием по умолчанию — Р-28',
+    savedMeal === 'Шаблон сохранён — «Обычный завтрак»: Щи, Компот',
+    savedMeal,
+  )
+  await act(`byText('button', 'Сохранить день как шаблон')?.click()`)
+  await sleep(300)
+  await act(`byText('button', 'Сохранить')?.click()`)
+  await sleep(700)
+  const savedDay = await status()
+  check('шаблон дня сохраняется из всех приёмов дня — Р-28', savedDay === 'Шаблон сохранён — «Обычный день»: 3 блюда', savedDay)
+
+  await clickInMeal('Завтрак', 'Сохранить как шаблон')
+  await sleep(300)
+  const replace = await run(`[...document.querySelectorAll('button')].some((el) => el.textContent.trim() === 'Заменить состав')`)
+  check('то же название того же приёма — «Заменить состав», а не второй шаблон', replace === true)
+  await act(`byText('button', 'Отмена')?.click()`)
+  await sleep(300)
+
+  // ─ Применение на прошлом дне: 7 апреля пусто.
+  await go('/?day=2026-04-07')
+  const offered = await run(`[...document.querySelectorAll('.day-templates button')].map((el) => el.textContent.trim())`)
+  const breakfastButtons = await buttonsInMeal('Завтрак')
+  check(
+    'на прошлом дне — шаблон дня целиком и шаблон приёма у своего приёма',
+    JSON.stringify(offered) === JSON.stringify(['День по шаблону «Обычный день»: завтрак, обед']) &&
+      breakfastButtons?.includes('«Обычный завтрак»: Щи, Компот') &&
+      !(await buttonsInMeal('Обед'))?.some((text) => text.startsWith('«Обычный завтрак»')),
+    `${JSON.stringify(offered)}; завтрак ${JSON.stringify(breakfastButtons)}`,
+  )
+  await clickInMeal('Завтрак', '«Обычный завтрак»: Щи, Компот')
+  await sleep(800)
+  const afterMeal = await run(`[...document.querySelectorAll('.day-templates button')].map((el) => el.textContent.trim())`)
+  check(
+    'шаблон приёма ставит блюда одним тапом; шаблон дня больше не зовёт записанное — без дублей',
+    (await status()) === 'Завтрак — «Обычный завтрак»: Щи, Компот' &&
+      JSON.stringify(afterMeal) === JSON.stringify(['День по шаблону «Обычный день»: обед']) &&
+      !(await buttonsInMeal('Завтрак'))?.some((text) => text.startsWith('«Обычный завтрак»')),
+    `${await status()}; ${JSON.stringify(afterMeal)}`,
+  )
+  await act(`document.querySelector('.day-templates button')?.click()`)
+  await sleep(800)
+  const dayApplied = await status()
+  const records = await run(`[...document.querySelectorAll('.meal__records')].map((el) => el.innerText.replace(/\\s+/g, ' ').trim())`)
+  check(
+    'шаблон дня дописывает недостающее и уходит',
+    dayApplied === '«Обычный день»: 1 блюдо — обед' &&
+      JSON.stringify(records) === JSON.stringify(['Щи Компот', 'Борщ']) &&
+      (await run(`document.querySelectorAll('.day-templates button').length`)) === 0,
+    `${dayApplied}; ${JSON.stringify(records)}`,
+  )
+
+  // ─ Сегодня шаблон дня пишет только начавшиеся приёмы (Р-28). В текущем
+  // приёме уже стоят щи и компот из первого сценария; обед шаблона — борщ.
+  const hour = new Date().getHours()
+  const current = hour < 13 ? 'breakfast' : hour < 18 ? 'lunch' : 'dinner'
+  await go('/')
+  const todayOffer = await run(`[...document.querySelectorAll('.day-templates button')].map((el) => el.textContent.trim())`)
+  const expected = current === 'breakfast' ? [] : ['День по шаблону «Обычный день»: завтрак, обед']
+  check(
+    'сегодня шаблон дня не зовёт не начавшиеся приёмы',
+    JSON.stringify(todayOffer) === JSON.stringify(expected),
+    `приём ${current}; ${JSON.stringify(todayOffer)}`,
+  )
+
+  // ─ «Блюда»: шаблоны по видам, с составом.
+  await go('/dishes')
+  await unfold('Шаблоны')
+  const templates = await screen()
+  check(
+    '«Блюда» → «Шаблоны»: шаблоны дня и приёмов с составом',
+    has(templates, 'Шаблоны дня') &&
+      line(templates, 'Обычный день ·').trim() === 'Обычный день · Завтрак: Щи, Компот · Обед: Борщ' &&
+      line(templates, 'Обычный завтрак ·').trim() === 'Обычный завтрак · Щи, Компот',
+    `${line(templates, 'Обычный день ·')}; ${line(templates, 'Обычный завтрак ·')}`,
+  )
 }
 
 /**

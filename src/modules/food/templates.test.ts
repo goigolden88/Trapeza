@@ -12,6 +12,7 @@ import {
   moveTemplate,
   placedItems,
   templatesOf,
+  templateText,
 } from './templates.ts'
 
 const at = '2026-09-16T10:00:00.000Z'
@@ -169,5 +170,19 @@ describe('применение без дублей — Р-08, Р-28', () => {
       ['2026-09-18', 'lunch', 'dish:суп'],
     ])
     expect([...made].sort((a, b) => a.id.localeCompare(b.id))).toEqual(made)
+  })
+})
+
+describe('состав словами — Р-28', () => {
+  it('приёма — блюда с порциями; дня — по приёмам в порядке дня; пропавшее блюдо названо', () => {
+    const meal = template('Завтрак', { meal: 'breakfast', items: [{ dishId: 'dish:каша', portions: 2 }, { dishId: 'dish:компот' }] })
+    expect(templateText(meal, dishes)).toBe('каша 2 порции, компот')
+    const day = template('День', {
+      items: [
+        { meal: 'dinner', dishId: 'dish:мясное', grams: 200 },
+        { meal: 'breakfast', dishId: 'dish:нет' },
+      ],
+    })
+    expect(templateText(day, dishes)).toBe('Завтрак: блюдо удалено · Ужин: мясное 200 г')
   })
 })

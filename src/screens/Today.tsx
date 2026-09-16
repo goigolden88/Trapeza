@@ -3,18 +3,31 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { db } from '../core/db.ts'
 import { addDays, formatDate, formatDateLong, formatPeriod, nowIso, plural, weekPeriod, type DateStr } from '../core/dates.ts'
 import { ulid } from '../core/id.ts'
-import type { Category, Dish, Intake, Meal, Norm } from '../core/model.ts'
+import type { Category, Dish, Intake, Meal, Norm, Template } from '../core/model.ts'
 import { activeDishes } from '../modules/food/catalog.ts'
 import { dayMeals, tapDish, viewedDay } from '../modules/food/day.ts'
 import { amountText, intakeInput, readIntake, stepPortions, type IntakeInput } from '../modules/food/forms.ts'
 import { kcalText } from '../modules/food/kcal.ts'
 import { FORMS, formatNumber, MEAL_NAMES, MEALS, normCheckText, portions, touchText } from '../modules/food/labels.ts'
-import { currentMeal, DEFAULT_MEAL_HOURS, MEAL_HOURS_KEY, readMealHours, type MealHours } from '../modules/food/meals.ts'
+import { currentMeal, DEFAULT_MEAL_HOURS, MEAL_HOURS_KEY, readMealHours, startedMeals, type MealHours } from '../modules/food/meals.ts'
 import { normName } from '../modules/food/names.ts'
 import { activeNorms, checkWeek, indexDays, touchedNorms } from '../modules/food/norms.ts'
 import { frequentDishes, pickSections, searchSections, sectionsSize } from '../modules/food/picker.ts'
 import { previousMeal, repeatItems } from '../modules/food/repeat.ts'
 import { summarize, type CategoryLine } from '../modules/food/summary.ts'
+import {
+  applyTemplate,
+  checkTemplateName,
+  createTemplate,
+  defaultTemplateName,
+  intakeFrom,
+  itemsFromRecords,
+  NAME_PROBLEM_TEXT,
+  replaceItems,
+  templatesOf,
+  type PlacedItem,
+  type TemplateKind,
+} from '../modules/food/templates.ts'
 import { useFood, type Food } from '../modules/food/useFood.ts'
 import { weekRoute } from '../modules/food/week.ts'
 import { Fold } from '../ui/Fold.tsx'
@@ -146,6 +159,7 @@ function Day({ day, today, data, hours }: { day: DateStr; today: DateStr; data: 
 
   const dishes = new Map(data.dishes.map((dish) => [dish.id, dish]))
   const meals = dayMeals(data.intake, day)
+  const dayRecords = Object.values(meals).flat()
   const live = activeDishes(data.dishes)
 
   if (live.length === 0 && Object.values(meals).every((records) => records.length === 0)) {
@@ -168,6 +182,15 @@ function Day({ day, today, data, hours }: { day: DateStr; today: DateStr; data: 
           {note}
         </p>
       )}
+      <DayTemplates
+        day={day}
+        records={dayRecords}
+        templates={data.templates}
+        dishes={dishes}
+        allowed={startedMeals(current)}
+        save={save}
+        onNote={setNote}
+      />
       {MEALS.map((meal) => (
         <MealBlock
           key={meal}
@@ -177,18 +200,22 @@ function Day({ day, today, data, hours }: { day: DateStr; today: DateStr; data: 
           open={meal === open}
           onToggle={() => setChosen(meal === open ? null : meal)}
           records={meals[meal]}
-          dayRecords={Object.values(meals).flat()}
+          dayRecords={dayRecords}
           dishes={dishes}
           live={live}
           categories={data.categories}
+          templates={data.templates}
           intake={data.intake}
           norms={data.norms}
           save={save}
           onNote={setNote}
         />
       ))}
+      {dayRecords.length > 0 && (
+        <SaveTemplate kind="day" records={dayRecords} templates={data.templates} dishes={dishes} save={save} onNote={setNote} />
+      )}
       <NormsBlock day={day} today={today} data={data} dishes={dishes} />
-      <DaySummaryBlock records={Object.values(meals).flat()} dishes={dishes} data={data} />
+      <DaySummaryBlock records={dayRecords} dishes={dishes} data={data} />
     </>
   )
 }
@@ -204,6 +231,7 @@ function MealBlock({
   dishes,
   live,
   categories,
+  templates,
   intake,
   norms,
   save,
@@ -219,6 +247,7 @@ function MealBlock({
   dishes: ReadonlyMap<string, Dish>
   live: Dish[]
   categories: Category[]
+  templates: Template[]
   intake: Intake[]
   norms: Norm[]
   save: Save
@@ -264,7 +293,11 @@ function MealBlock({
         </ul>
       )}
 
+      <MealTemplates meal={meal} day={day} records={records} templates={templates} dishes={dishes} save={save} onNote={onNote} />
       <Repeat meal={meal} day={day} records={records} intake={intake} dishes={dishes} save={save} onNote={onNote} />
+      {records.length > 0 && (
+        <SaveTemplate kind={meal} records={records} templates={templates} dishes={dishes} save={save} onNote={onNote} />
+      )}
 
       {open && (
         <DishPicker
@@ -463,6 +496,181 @@ function Repeat({
     <button type="button" className="link-btn meal__repeat" onClick={() => void apply()}>
       Как {when}: {names}
     </button>
+  )
+}
+
+/** Названия блюд через запятую — для кнопок и строки после записи. */
+function dishNames(items: readonly { dishId: string }[], dishes: ReadonlyMap<string, Dish>): string {
+  return items.map((item) => dishes.get(item.dishId)?.name ?? 'блюдо').join(', ')
+}
+
+/**
+ * Шаблоны этого приёма (Р-08, Р-28): кнопка — что поставит, без дублей.
+ * Ставить нечего — кнопки нет, как у «как вчера».
+ */
+function MealTemplates({
+  meal,
+  day,
+  records,
+  templates,
+  dishes,
+  save,
+  onNote,
+}: {
+  meal: Meal
+  day: DateStr
+  records: Intake[]
+  templates: Template[]
+  dishes: ReadonlyMap<string, Dish>
+  save: Save
+  onNote: (text: string) => void
+}) {
+  const offers = templatesOf(templates, meal).flatMap((template) => {
+    const { add } = applyTemplate(template, records, [meal], dishes)
+    return add.length > 0 ? [{ template, add }] : []
+  })
+
+  async function apply(template: Template, add: PlacedItem[]) {
+    if (await save(() => db.putMany('intake', intakeFrom(add, day)))) {
+      onNote(`${MEAL_NAMES[meal]} — «${template.name}»: ${dishNames(add, dishes)}`)
+    }
+  }
+
+  return offers.map(({ template, add }) => (
+    <button key={template.id} type="button" className="link-btn meal__repeat" onClick={() => void apply(template, add)}>
+      «{template.name}»: {dishNames(add, dishes)}
+    </button>
+  ))
+}
+
+/**
+ * Шаблоны дня (Р-28) — над приёмами. На сегодня пишут только начавшиеся
+ * приёмы: утром шаблон не записывает несъеденный ужин; остальное — позже.
+ * На прошлый день — целиком.
+ */
+function DayTemplates({
+  day,
+  records,
+  templates,
+  dishes,
+  allowed,
+  save,
+  onNote,
+}: {
+  day: DateStr
+  records: Intake[]
+  templates: Template[]
+  dishes: ReadonlyMap<string, Dish>
+  allowed: Meal[]
+  save: Save
+  onNote: (text: string) => void
+}) {
+  const offers = templatesOf(templates, 'day').flatMap((template) => {
+    const applied = applyTemplate(template, records, allowed, dishes)
+    return applied.add.length > 0 ? [{ template, ...applied }] : []
+  })
+  if (offers.length === 0) return null
+
+  const mealList = (meals: readonly Meal[]) => meals.map((meal) => MEAL_NAMES[meal].toLowerCase()).join(', ')
+  const mealsOf = (add: readonly PlacedItem[]) => MEALS.filter((meal) => add.some((item) => item.meal === meal))
+
+  async function apply(template: Template, add: PlacedItem[], later: Meal[]) {
+    if (await save(() => db.putMany('intake', intakeFrom(add, day)))) {
+      const written = `«${template.name}»: ${add.length} ${plural(add.length, FORMS.dish)} — ${mealList(mealsOf(add))}`
+      onNote(later.length > 0 ? `${written} · на потом: ${mealList(later)}` : written)
+    }
+  }
+
+  return (
+    <div className="day-templates">
+      {offers.map(({ template, add, later }) => (
+        <button
+          key={template.id}
+          type="button"
+          className="link-btn meal__repeat"
+          onClick={() => void apply(template, add, later)}
+        >
+          День по шаблону «{template.name}»: {mealList(mealsOf(add))}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * «Сохранить как шаблон» (Р-28): из записанного приёма или всего дня.
+ * Название того же вида уже занято — сохранение заменяет состав того шаблона.
+ */
+function SaveTemplate({
+  kind,
+  records,
+  templates,
+  dishes,
+  save,
+  onNote,
+}: {
+  kind: TemplateKind
+  records: Intake[]
+  templates: Template[]
+  dishes: ReadonlyMap<string, Dish>
+  save: Save
+  onNote: (text: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState(() => defaultTemplateName(kind))
+  const label = kind === 'day' ? 'Сохранить день как шаблон' : 'Сохранить как шаблон'
+
+  if (!open) {
+    return (
+      <button type="button" className="link-btn meal__save" onClick={() => setOpen(true)}>
+        {label}
+      </button>
+    )
+  }
+
+  const check = checkTemplateName(templates, name, kind)
+  const items = itemsFromRecords(records, kind === 'day')
+
+  async function submit() {
+    if (!check.ok && check.problem !== 'same-kind') return
+    const record = check.ok ? createTemplate(templates, name, kind, items) : replaceItems(check.existing, items)
+    if (await save(() => db.put('templates', record))) {
+      const what = kind === 'day' ? `${items.length} ${plural(items.length, FORMS.dish)}` : dishNames(items, dishes)
+      onNote(`${check.ok ? 'Шаблон сохранён' : 'Состав шаблона заменён'} — «${record.name}»: ${what}`)
+      setOpen(false)
+    }
+  }
+
+  const replacing = !check.ok && check.problem === 'same-kind'
+
+  return (
+    <form
+      className="form template-save"
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault()
+        void submit()
+      }}
+    >
+      <label className="field">
+        <span>{label} — название</span>
+        <input name="template-name" value={name} onChange={(event) => setName(event.target.value)} />
+      </label>
+      {!check.ok && (
+        <p className={replacing ? 'muted' : 'error'}>
+          {NAME_PROBLEM_TEXT[check.problem]}
+          {replacing && ' — его состав заменится записанным'}
+        </p>
+      )}
+      <div className="form__actions">
+        <button type="button" className="btn" onClick={() => setOpen(false)}>
+          Отмена
+        </button>
+        <button type="submit" className="btn btn--primary" disabled={!check.ok && !replacing}>
+          {replacing ? 'Заменить состав' : 'Сохранить'}
+        </button>
+      </div>
+    </form>
   )
 }
 
