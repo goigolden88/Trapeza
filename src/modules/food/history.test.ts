@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { monthPeriod, inPeriod } from '../../core/dates.ts'
-import { SYNCED_STORES } from '../../core/model.ts'
+import { SYNCED_STORES, type Norm } from '../../core/model.ts'
+import { indexDays, normHistory } from './norms.ts'
 import { planImport, type Data } from '../../registry.ts'
 import { summarize } from './summary.ts'
 
@@ -52,6 +53,25 @@ describe('история таблицы — Р-09, Р-19', () => {
       expect(summary.loose).toBe(0)
       expect(new Set(records.map((record) => record.date)).size).toBe(days)
     }
+  })
+
+  it.skipIf(!file)('норма, заведённая в сентябре, видит февраль–март: шесть полных недель в счёт (Р-13, Р-24)', () => {
+    const plan = imported()
+    const dishes = new Map((plan.writes.dishes ?? []).map((dish) => [dish.id, dish]))
+    const index = indexDays(plan.writes.intake ?? [], dishes)
+    const all = (plan.writes.categories ?? []).map((category) => category.id)
+    const norm = (rules: Partial<Norm>): Norm => ({ id: 'n', updatedAt: '', name: 'Всё', categoryIds: all, order: 0, ...rules })
+    const today = '2026-09-17'
+
+    // Учёт был все 47 дней: полные недели — 2 февраля … 15 марта. Неделя
+    // с 1 февраля и 16–19 марта неполны; полгода после — без учёта.
+    const every = normHistory(norm({ minDays: 7 }), index, today, today)
+    expect([every.weeks.length, every.kept, every.open]).toEqual([6, 6, 2])
+    expect(every.weeks[0]?.week.from).toBe('2026-02-02')
+    expect(every.weeks.at(-1)?.week.to).toBe('2026-03-15')
+    // «Не больше 0» провалена уже одним днём — и неполные недели ясны.
+    const never = normHistory(norm({ maxDays: 0 }), index, today, today)
+    expect([never.weeks.length, never.kept, never.open]).toEqual([8, 0, 0])
   })
 
   it.skipIf(!file)('повторная загрузка ничего не удваивает', () => {
