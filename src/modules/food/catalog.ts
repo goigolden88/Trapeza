@@ -9,14 +9,14 @@
  */
 
 import { nowIso } from '../../core/dates.ts'
-import type { Category, Dish, Intake, MealTemplate, Norm } from '../../core/model.ts'
+import type { Category, Dish, Intake, Template, Norm } from '../../core/model.ts'
 import { cleanName, idFor, normName, type Named } from './names.ts'
 
 /** Всё, что задевает справочник. С надгробиями: по ним видно, какие id заняты. */
 export type CatalogData = {
   categories: readonly Category[]
   dishes: readonly Dish[]
-  templates: readonly MealTemplate[]
+  templates: readonly Template[]
   norms: readonly Norm[]
   intake: readonly Intake[]
 }
@@ -25,7 +25,7 @@ export type CatalogData = {
 export type CatalogPlan = {
   categories: Category[]
   dishes: Dish[]
-  templates: MealTemplate[]
+  templates: Template[]
   norms: Norm[]
   intake: Intake[]
 }
@@ -147,7 +147,7 @@ export function intakeUsing(intake: readonly Intake[], dishId: string): number {
 }
 
 /** Живые шаблоны, где стоит блюдо. */
-function templatesUsing(templates: readonly MealTemplate[], dishId: string): MealTemplate[] {
+function templatesUsing(templates: readonly Template[], dishId: string): Template[] {
   return templates.filter((template) => !template.deleted && template.items.some((item) => item.dishId === dishId))
 }
 
@@ -156,19 +156,24 @@ function normsUsing(norms: readonly Norm[], categoryId: string): Norm[] {
   return norms.filter((norm) => !norm.deleted && norm.categoryIds.includes(categoryId))
 }
 
-/** Шаблон, где блюда переехали по `move`. Блюдо, уже стоящее в шаблоне, второй раз не ставится (Р-08). */
-function moveTemplate(template: MealTemplate, move: (id: string) => string): MealTemplate | null {
+/**
+ * Шаблон, где блюда переехали по `move`. Блюдо, уже стоящее в том же приёме
+ * шаблона, второй раз не ставится (Р-08); у шаблона дня одно блюдо в двух
+ * приёмах — не повтор (Р-28).
+ */
+function moveTemplate(template: Template, move: (id: string) => string): Template | null {
   const seen = new Set<string>()
-  const items: MealTemplate['items'] = []
+  const items: Template['items'] = []
   let changed = false
   for (const item of template.items) {
     const dishId = move(item.dishId)
     if (dishId !== item.dishId) changed = true
-    if (seen.has(dishId)) {
+    const key = `${item.meal ?? ''}|${dishId}`
+    if (seen.has(key)) {
       changed = true
       continue
     }
-    seen.add(dishId)
+    seen.add(key)
     items.push(dishId === item.dishId ? item : { ...item, dishId })
   }
   return changed ? { ...template, items } : null

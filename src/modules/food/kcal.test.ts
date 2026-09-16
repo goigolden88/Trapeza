@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Dish, Intake } from '../../core/model.ts'
 import { dayMeals, tapDish, viewedDay } from './day.ts'
 import { formatKcal, intakeKcal, kcalText, portionKcal, sumKcal } from './kcal.ts'
-import { currentMeal, DEFAULT_MEAL_HOURS, mealByHour, readMealHours } from './meals.ts'
+import { currentMeal, DEFAULT_MEAL_HOURS, mealByHour, readMealHours, startedMeals } from './meals.ts'
 
 const at = '2026-09-16T10:00:00.000Z'
 
@@ -58,6 +58,15 @@ describe('калорийность записи — 02-Архитектура', 
     expect(kcalText({ kcal: 0, counted: 0, total: 21 })).toBe('ккал не известны ни у одной из 21 записи')
     expect(kcalText({ kcal: 0, counted: 0, total: 0 })).toBe('')
     expect(formatKcal(99.6)).toBe('100')
+  })
+})
+
+describe('начавшиеся приёмы — Р-28', () => {
+  it('сегодня — до текущего включительно, без перекуса; прошлый день — все', () => {
+    expect(startedMeals('breakfast')).toEqual(['breakfast'])
+    expect(startedMeals('lunch')).toEqual(['breakfast', 'lunch'])
+    expect(startedMeals('dinner')).toEqual(['breakfast', 'lunch', 'dinner'])
+    expect(startedMeals(null)).toEqual(['breakfast', 'lunch', 'dinner', 'snack'])
   })
 })
 

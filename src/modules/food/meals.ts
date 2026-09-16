@@ -41,3 +41,14 @@ export function mealByHour(hour: number, hours: MealHours): Meal {
 export function currentMeal(now: Date, hours: MealHours): Meal {
   return mealByHour(now.getHours(), hours)
 }
+
+/**
+ * Какие приёмы шаблон дня может записать (Р-28): на сегодня — начавшиеся
+ * по часам, до текущего включительно, без перекуса — у него нет часов; на
+ * прошлый день (`current` null) — все четыре.
+ */
+export function startedMeals(current: Meal | null): Meal[] {
+  if (current === null) return ['breakfast', 'lunch', 'dinner', 'snack']
+  const main: Meal[] = ['breakfast', 'lunch', 'dinner']
+  return main.slice(0, main.indexOf(current) + 1)
+}

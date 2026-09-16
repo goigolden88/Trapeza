@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Category, Dish, Intake, MealTemplate, Norm } from '../../core/model.ts'
+import type { Category, Dish, Intake, Template, Norm } from '../../core/model.ts'
 import {
   activeCategories,
   activeDishes,
@@ -137,7 +137,7 @@ describe('удаление с переносом — Р-12', () => {
 
   it('блюдо с записями без переноса — нельзя; с переносом — записи и шаблоны переходят без дублей', () => {
     const record = intake('i1', borsch.id)
-    const template: MealTemplate = {
+    const template: Template = {
       id: 't1',
       updatedAt: at,
       name: 'Обед',
@@ -234,7 +234,7 @@ describe('слияние одноимённых — Р-12', () => {
 
   it('шаблон: переехавшее блюдо, уже стоящее в шаблоне, второй раз не ставится', () => {
     const tomb = { ...dish('Щи'), deleted: true, movedTo: 'dish:борщ' }
-    const template: MealTemplate = {
+    const template: Template = {
       id: 't1',
       updatedAt: at,
       name: 'Обед',
@@ -244,6 +244,31 @@ describe('слияние одноимённых — Р-12', () => {
     }
     const plan = reconcilePlan(data({ dishes: [tomb, dish('Борщ')], templates: [template] }))
     expect(plan.templates).toEqual([{ ...template, items: [{ dishId: 'dish:борщ' }] }])
+  })
+
+  it('шаблон дня: повтор — только в том же приёме; одно блюдо в обеде и ужине остаётся — Р-28', () => {
+    const tomb = { ...dish('Щи'), deleted: true, movedTo: 'dish:борщ' }
+    const template: Template = {
+      id: 't2',
+      updatedAt: at,
+      name: 'День',
+      items: [
+        { meal: 'lunch', dishId: 'dish:борщ' },
+        { meal: 'lunch', dishId: 'dish:щи' },
+        { meal: 'dinner', dishId: 'dish:щи', portions: 2 },
+      ],
+      order: 0,
+    }
+    const plan = reconcilePlan(data({ dishes: [tomb, dish('Борщ')], templates: [template] }))
+    expect(plan.templates).toEqual([
+      {
+        ...template,
+        items: [
+          { meal: 'lunch', dishId: 'dish:борщ' },
+          { meal: 'dinner', dishId: 'dish:борщ', portions: 2 },
+        ],
+      },
+    ])
   })
 
   it('архив поздней правки переходит к оставшейся; снятый архив снимается', () => {

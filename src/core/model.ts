@@ -75,12 +75,13 @@ export type Recipe = {
   text?: string
 }
 
-/** Шаблон приёма: «обычный завтрак». Заводится из записанного приёма (Р-08) */
-export type MealTemplate = Base & {
+/** Шаблон приёма — «обычный завтрак» — или дня — «обычный день». Заводится из записанного (Р-08, Р-28) */
+export type Template = Base & {
   name: string
-  /** для какого приёма предлагается */
-  meal: Meal
-  items: { dishId: string; portions?: number; grams?: number }[]
+  /** есть — шаблон приёма; нет — шаблон дня, приём у каждого блюда */
+  meal?: Meal
+  items: { dishId: string; meal?: Meal; portions?: number; grams?: number }[]
+  /** порядок внутри своего вида: шаблоны дня, шаблоны одного приёма */
   order: number
 }
 
@@ -144,7 +145,7 @@ export type StoreName = SyncedStore | LocalStore
 export type StoreRecord = {
   categories: Category
   dishes: Dish
-  templates: MealTemplate
+  templates: Template
   norms: Norm
   intake: Intake
 }
