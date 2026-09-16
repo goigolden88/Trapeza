@@ -1,7 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import type { ScreenKey } from './screenNames.ts'
 import { ScrollButtons } from './ScrollButtons.tsx'
-import { useScreenNames } from './useScreenNames.ts'
 
 /**
  * Нижняя панель: только то, что открывают каждый день. Вкладки прибавляются
@@ -9,17 +7,13 @@ import { useScreenNames } from './useScreenNames.ts'
  *
  * «Настроек» здесь нет намеренно, как и в «Дневниках»: в них заходят раз
  * в месяц, и живут они шестерёнкой в шапке «Сегодня».
+ *
+ * Названия вкладок постоянные: свои названия экранов «Делу Время» (их Р-26)
+ * в «Трапезу» не берутся (Р-16).
  */
-const TABS: readonly { to: string; screen: ScreenKey; end: boolean }[] = [
-  { to: '/', screen: 'today', end: true },
-  { to: '/time', screen: 'time', end: false },
-  { to: '/inbox', screen: 'inbox', end: false },
-]
+const TABS: readonly { to: string; name: string; end: boolean }[] = [{ to: '/', name: 'Сегодня', end: true }]
 
 export function Layout() {
-  // Подписи — из настроек устройства (Р-26), адреса — постоянные.
-  const names = useScreenNames()
-
   return (
     <div className="layout">
       <main className="content">
@@ -37,7 +31,7 @@ export function Layout() {
             end={tab.end}
             className={({ isActive }) => (isActive ? 'tab tab--active' : 'tab')}
           >
-            {names[tab.screen]}
+            {tab.name}
           </NavLink>
         ))}
       </nav>

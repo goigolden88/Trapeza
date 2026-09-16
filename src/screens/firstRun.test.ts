@@ -20,14 +20,19 @@ describe('пустая база', () => {
     expect(isEmptyBase({})).toBe(true)
   })
 
-  it('справочники не в счёт: категории заводятся сами', () => {
-    expect(isEmptyBase({ categories: 8, presets: 3, templates: 2 })).toBe(true)
+  it('нули во всех хранилищах — пусто', () => {
+    expect(isEmptyBase({ categories: 0, dishes: 0, templates: 0, norms: 0, intake: 0 })).toBe(true)
+  })
+
+  it('справочники в счёт: сами не заводятся, приходят импортом — Р-15', () => {
+    expect(isEmptyBase({ categories: 26 })).toBe(false)
+    expect(isEmptyBase({ dishes: 1 })).toBe(false)
   })
 
   it('любая запись человека — уже не пусто', () => {
-    expect(isEmptyBase({ notes: 1 })).toBe(false)
-    expect(isEmptyBase({ time: 1 })).toBe(false)
-    expect(isEmptyBase({ reviews: 1 })).toBe(false)
+    expect(isEmptyBase({ intake: 1 })).toBe(false)
+    expect(isEmptyBase({ templates: 1 })).toBe(false)
+    expect(isEmptyBase({ norms: 1 })).toBe(false)
   })
 })
 

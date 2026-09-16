@@ -13,7 +13,7 @@
 import { formatDate, isDateOrMonth, isDateStr, type DateStr } from './dates.ts'
 import type { StoreRecord, SyncedStore } from './model.ts'
 
-export const IMPORT_FORMAT = 'deluvremya-import'
+export const IMPORT_FORMAT = 'trapeza-import'
 export const IMPORT_VERSION = 1
 
 /** Что не так с записью — по имени и с причиной. В базу она не попадает. */
@@ -83,7 +83,7 @@ export function readImportFile(text: string): Record<string, unknown> {
     throw new Error('Это копия приложения, а не импорт записей. Её загружают кнопкой «Восстановить из копии»')
   }
   if (raw.format !== IMPORT_FORMAT) {
-    throw new Error(`В файле нет строки "format": "${IMPORT_FORMAT}" — это не импорт записей «Делу Время»`)
+    throw new Error(`В файле нет строки "format": "${IMPORT_FORMAT}" — это не импорт записей «Трапезы»`)
   }
   if (typeof raw.version === 'number' && raw.version > IMPORT_VERSION) {
     throw new Error('Файл сделан для более новой версии приложения. Обнови приложение')
@@ -220,8 +220,8 @@ export function buildPrompt(specs: readonly ImportSpec[], day: DateStr): string 
   )
 
   return [
-    'Помоги перенести мои записи в приложение «Делу Время». Ниже — описание формата, а в конце — ' +
-      'мои данные: таблицы учёта времени, заметки или скриншоты из других сервисов. Собери из них ' +
+    'Помоги перенести мои записи в приложение «Трапеза». Ниже — описание формата, а в конце — ' +
+      'мои данные: таблицы учёта еды, списки блюд или скриншоты из других сервисов. Собери из них ' +
       'один JSON строго в этом формате.',
     '',
     `Сегодня ${formatDate(day)}. От этой даты считай «вчера», «прошлой весной» и год там, где он не указан.`,

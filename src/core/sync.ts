@@ -323,7 +323,7 @@ async function onePass(
  */
 async function bootstrap(api: Client): Promise<string> {
   try {
-    return await api.createFirst(metaFile(), 'Делу Время: заведение репозитория данных')
+    return await api.createFirst(metaFile(), 'Трапеза: заведение репозитория данных')
   } catch (error) {
     const text = error instanceof Error ? error.message : 'Неизвестная ошибка'
     throw new Error(
@@ -355,7 +355,7 @@ function checkRemoteVersion(version: number): void {
 
 function message(files: readonly RepoFile[]): string {
   const paths = files.map((file) => file.path).sort()
-  const head = `Делу Время: ${paths.length === 1 ? paths[0] : `обновлено файлов ${paths.length}`}`
+  const head = `Трапеза: ${paths.length === 1 ? paths[0] : `обновлено файлов ${paths.length}`}`
   return paths.length === 1 ? head : `${head}\n\n${paths.join('\n')}`
 }
 

@@ -1,62 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { GO_ROUTES, SHORTCUTS, launchRoute, sharedText, shortcutUrl } from './launch.ts'
-
-/** Текст, который увидят входящие, — из маршрута обратно. */
-function sharedOf(route: string | null): string | null {
-  if (route === null) return null
-  const query = route.split('?')[1]
-  return query === undefined ? '' : new URLSearchParams(query).get('shared')
-}
-
-describe('текст из «Поделиться» — Р-16', () => {
-  it('заголовок и ссылка — двумя строками', () => {
-    const params = new URLSearchParams({ title: 'Статья про сон', url: 'https://example.com/son' })
-    expect(sharedText(params)).toBe('Статья про сон\nhttps://example.com/son')
-  })
-
-  it('ссылка, уже стоящая в тексте, второй раз не пишется', () => {
-    const params = new URLSearchParams({
-      text: 'Посмотри https://example.com/v',
-      url: 'https://example.com/v',
-    })
-    expect(sharedText(params)).toBe('Посмотри https://example.com/v')
-  })
-
-  it('заголовок, повторённый в тексте, уступает тексту', () => {
-    const params = new URLSearchParams({ title: 'Видео', text: 'Видео https://example.com/v' })
-    expect(sharedText(params)).toBe('Видео https://example.com/v')
-  })
-
-  it('пробелы по краям и пустые поля отбрасываются', () => {
-    const params = new URLSearchParams({ title: '  ', text: '  купить фильтр  ', url: '' })
-    expect(sharedText(params)).toBe('купить фильтр')
-  })
-
-  it('кириллица и переводы строк доезжают как есть', () => {
-    const params = new URLSearchParams({ text: 'первая строка\nвторая — с «кавычками» & знаками' })
-    expect(sharedText(params)).toBe('первая строка\nвторая — с «кавычками» & знаками')
-  })
-})
+import { GO_ROUTES, SHORTCUTS, launchRoute, shortcutUrl } from './launch.ts'
 
 describe('адрес запуска → маршрут — Р-16', () => {
-  it('поделились — входящие с текстом, и текст доезжает целиком', () => {
-    const route = launchRoute('?title=Заметка&text=' + encodeURIComponent('мысль & ещё одна'))
-    expect(route?.startsWith('/inbox?')).toBe(true)
-    expect(sharedOf(route)).toBe('Заметка\nмысль & ещё одна')
-  })
-
-  it('поделились пустым — просто входящие, нажатие не пропадает', () => {
-    expect(launchRoute('?text=')).toBe('/inbox')
-    expect(launchRoute('?title=%20&text=&url=')).toBe('/inbox')
-  })
-
-  it('ярлыки ведут на свои экраны; «Записать» — с курсором в поле', () => {
-    expect(launchRoute('?go=inbox')).toBe('/inbox?write=1')
-    expect(launchRoute('?go=time')).toBe('/time')
+  it('ярлык «Записать» ведёт на «Сегодня»', () => {
+    expect(launchRoute('?go=write')).toBe('/')
   })
 
   it('незнакомый ярлык — главный экран, а не ошибка', () => {
-    expect(launchRoute('?go=review')).toBe('/')
+    expect(launchRoute('?go=inbox')).toBe('/')
     // Имена из прототипа объекта ярлыками не считаются.
     expect(launchRoute('?go=toString')).toBe('/')
     expect(launchRoute('?go=')).toBe('/')
@@ -66,10 +17,14 @@ describe('адрес запуска → маршрут — Р-16', () => {
     expect(launchRoute('')).toBeNull()
     expect(launchRoute('?utm_source=x')).toBeNull()
   })
+
+  it('«Поделиться» не принимается: параметры share — чужие', () => {
+    expect(launchRoute('?text=борщ')).toBeNull()
+  })
 })
 
 describe('ярлыки в манифесте', () => {
-  const base = '/DeluVremya/'
+  const base = '/Trapeza/'
 
   it('адрес каждого ярлыка разбирается обратно в свой экран', () => {
     for (const shortcut of SHORTCUTS) {
@@ -80,7 +35,8 @@ describe('ярлыки в манифесте', () => {
     }
   })
 
-  it('три ярлыка из Р-09: «Записать», «План дня», «Учесть время»', () => {
-    expect(SHORTCUTS.map((shortcut) => shortcut.name)).toEqual(['Записать', 'План дня', 'Учесть время'])
+  it('один ярлык — «Записать», адрес `?go=write` не меняется никогда — Р-16', () => {
+    expect(SHORTCUTS.map((shortcut) => shortcut.name)).toEqual(['Записать'])
+    expect(shortcutUrl(base, 'write')).toBe('/Trapeza/?go=write')
   })
 })

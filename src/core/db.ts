@@ -27,19 +27,18 @@ import { nowIso } from './dates.ts'
 import { SCHEMA_VERSION, SYNCED_STORES, migrations } from './model.ts'
 import type { Base, Migration, StoreRecord, SyncedStore } from './model.ts'
 
-// Своё имя, не 'dnevniki': оба приложения живут на одном origin
-// goigolden88.github.io, а IndexedDB общая на origin и различается только
-// именем базы (02-Архитектура, «Локальное хранилище»).
-const DB_NAME = 'deluvremya'
+// Своё имя, не 'dnevniki' и не 'deluvremya': все три приложения живут на одном
+// origin goigolden88.github.io, а IndexedDB общая на origin и различается
+// только именем базы (02-Архитектура, «Локальное хранилище»). Не меняется никогда.
+const DB_NAME = 'trapeza'
 
 /** Индексы сверх `updatedAt`, который заводится на каждом хранилище. */
 const INDEXES: Record<SyncedStore, readonly string[]> = {
   categories: [],
-  presets: [],
+  dishes: [],
   templates: [],
-  notes: ['capturedOn', 'plannedFor'],
-  time: ['date'],
-  reviews: ['weekStart'],
+  norms: [],
+  intake: ['date'],
 }
 
 /** Откуда пришла запись. Определяет, двигать ли `updatedAt` и метить ли грязной. */
@@ -218,11 +217,10 @@ export async function createLegacyBase(
  */
 const V1_STORES: readonly SyncedStore[] = [
   'categories',
-  'presets',
+  'dishes',
   'templates',
-  'notes',
-  'time',
-  'reviews',
+  'norms',
+  'intake',
 ]
 
 function createStores(database: IDBDatabase): void {
@@ -485,7 +483,7 @@ function parseSnapshot(text: string): Snapshot {
 
   const raw = value as Partial<Snapshot>
   if (typeof raw.schemaVersion !== 'number') {
-    throw new Error('В файле нет версии схемы — это не слепок «Делу Время»')
+    throw new Error('В файле нет версии схемы — это не слепок «Трапезы»')
   }
   if (typeof raw.data !== 'object' || raw.data === null) {
     throw new Error('В файле нет данных')

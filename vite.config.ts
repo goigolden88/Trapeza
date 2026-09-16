@@ -1,15 +1,15 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import { SHARE_PARAMS, SHORTCUTS, shortcutUrl } from './src/launch.ts'
+import { SHORTCUTS, shortcutUrl } from './src/launch.ts'
 
 // GitHub Pages отдаёт сайт проекта не с корня домена, а по /<имя репозитория>/.
-// Репозиторий называется DeluVremya → https://goigolden88.github.io/DeluVremya/
+// Репозиторий называется Trapeza → https://goigolden88.github.io/Trapeza/
 //
 // Если base не выставить, сборка пройдёт зелёной, а страница откроется белой:
 // все скрипты уйдут в 404. Симптом выглядит как сломанная сборка, причина — здесь.
-// Переименуете репозиторий — правьте эту строку, остальное подтянется. См. Р-06.
-const BASE = '/DeluVremya/'
+// Переименуете репозиторий — правьте эту строку, остальное подтянется. См. Р-10.
+const BASE = '/Trapeza/'
 
 const THEME = '#1b1c1e'
 
@@ -48,9 +48,9 @@ export default defineConfig({
 
       manifest: {
         id: BASE,
-        name: 'Делу Время',
-        short_name: 'Делу Время',
-        description: 'План дня, входящие и учёт времени. Работает без сети.',
+        name: 'Трапеза',
+        short_name: 'Трапеза',
+        description: 'Учёт еды: что съедено и совпала ли неделя с нормами. Работает без сети.',
         lang: 'ru',
         // Пути с base. При base '/' манифест соберётся, но иконка
         // на телефон не встанет — установка просто не предложится.
@@ -70,17 +70,12 @@ export default defineConfig({
           },
         ],
 
-        // «Поделиться» и ярлыки — основной путь ввода (Р-09). Оба зашиваются
-        // в установленное приложение на Android, поэтому объявлены с первого
-        // дня, а старый адрес обязан работать и после любой правки.
-        // Приём — GET на корень, разбор при старте в src/launch.ts,
-        // без работника (Р-16). Имена и адреса берутся оттуда же, где
-        // их разбирают: разойтись они не могут.
-        share_target: {
-          action: BASE,
-          method: 'GET',
-          params: { ...SHARE_PARAMS },
-        },
+        // Ярлык «Записать» (Р-04) зашивается в установленное приложение
+        // на Android, поэтому объявлен с первого дня (Р-16), а старый адрес
+        // обязан работать и после любой правки. Разбор при старте —
+        // в src/launch.ts; имена и адреса берутся оттуда же, где их
+        // разбирают: разойтись они не могут. «Поделиться» не объявлено —
+        // принимать приложению нечего.
         shortcuts: SHORTCUTS.map((shortcut) => ({
           name: shortcut.name,
           url: shortcutUrl(BASE, shortcut.go),

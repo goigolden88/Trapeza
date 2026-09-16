@@ -11,9 +11,17 @@ import {
   recordsText,
   type FeedItem,
 } from './feed.ts'
+import type { RecordKind } from './model.ts'
+
+/**
+ * Вид записи в «Трапезе» один — `intake`. Механика ленты общая для семьи
+ * и порядок видов проверяется на двух выдуманных: иначе проверять нечего.
+ */
+const SECOND = 'second' as RecordKind
+const THIRD = 'third' as RecordKind
 
 function item(date: string, over: Partial<FeedItem> = {}): FeedItem {
-  return { kind: 'note', id: date || 'пусто', date, title: 'Купить фильтр', detail: '', link: '/', ...over }
+  return { kind: 'intake', id: date || 'пусто', date, title: 'Купить фильтр', detail: '', link: '/', ...over }
 }
 
 const ids = (items: FeedItem[]) => items.map((each) => each.id)
@@ -40,12 +48,12 @@ describe('groupFeed', () => {
   it('внутри одного дня — по виду в порядке реестра, затем по названию', () => {
     const groups = groupFeed(
       [
-        item('2026-09-01', { id: 'review', kind: 'review', title: 'Обзор' }),
+        item('2026-09-01', { id: 'review', kind: THIRD, title: 'Обзор' }),
         item('2026-09-01', { id: 'b', title: 'Фильтр' }),
-        item('2026-09-01', { id: 'time', kind: 'time', title: '5 ч' }),
+        item('2026-09-01', { id: 'time', kind: SECOND, title: '5 ч' }),
         item('2026-09-01', { id: 'a', title: 'Бритва' }),
       ],
-      ['note', 'time', 'review'],
+      ['intake', SECOND, THIRD],
     )
     expect(ids(groups[0]?.items ?? [])).toEqual(['a', 'b', 'time', 'review'])
   })
@@ -54,7 +62,7 @@ describe('groupFeed', () => {
 describe('filterFeed', () => {
   const list = [
     item('2026-09-10', { id: 'filter', detail: 'дело · сделано 14.09' }),
-    item('2026-07-01', { id: 'day', kind: 'time', title: '5 ч', extra: 'Чтение Ютуб покер' }),
+    item('2026-07-01', { id: 'day', kind: SECOND, title: '5 ч', extra: 'Чтение Ютуб покер' }),
     item('2026-03-12', { id: 'thought', title: 'Ёлки у реки' }),
     item('', { id: 'undated', title: 'Старая мысль' }),
   ]
@@ -64,7 +72,7 @@ describe('filterFeed', () => {
   })
 
   it('по виду', () => {
-    expect(ids(filterFeed(list, { kind: 'time' }))).toEqual(['day'])
+    expect(ids(filterFeed(list, { kind: SECOND }))).toEqual(['day'])
   })
 
   it('все слова запроса, в любом порядке, по названию и подписи', () => {
@@ -89,7 +97,7 @@ describe('filterFeed', () => {
   })
 
   it('вид и поиск вместе', () => {
-    expect(filterFeed(list, { kind: 'review', query: 'фильтр' })).toEqual([])
+    expect(filterFeed(list, { kind: THIRD, query: 'фильтр' })).toEqual([])
   })
 })
 

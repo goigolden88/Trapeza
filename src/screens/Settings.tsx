@@ -1,48 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { RecordKind } from '../core/model.ts'
-import { exportSpan, monthChoices, monthTitle, yearChoices } from './period.ts'
-import { useRecordDates } from './useRecordDates.ts'
-import { Link } from 'react-router-dom'
 import { CHANGES } from '../changes.ts'
 import { db } from '../core/db.ts'
-import { days, today } from '../core/dates.ts'
+import { today } from '../core/dates.ts'
 import { SCHEMA_VERSION, SYNCED_STORES } from '../core/model.ts'
 import type { SyncedStore } from '../core/model.ts'
-import {
-  checkReminder,
-  disableReminders,
-  enableReminders,
-  readWakes,
-  readWindow,
-  reminderStatus,
-  saveWindow,
-  type ReminderStatus,
-  type ReminderWindow,
-  type RemindResult,
-  type Wake,
-} from '../notify.ts'
 import { backupNote, backupSummary } from '../ui/backup.ts'
 import { Fold } from '../ui/Fold.tsx'
 import { InstallNote } from '../ui/Install.tsx'
 import { ReportBug } from '../ui/Report.tsx'
-import { SyncSettings } from '../ui/SyncSettings.tsx'
 import { useSyncStatus } from '../ui/useSync.ts'
-import { DEFAULT_SCREEN_NAMES, MAX_SCREEN_NAME, quoted, SCREEN_KEYS, type ScreenKey } from '../ui/screenNames.ts'
-import { saveScreenNames, useScreenNames } from '../ui/useScreenNames.ts'
-import { KIND_ORDER, KINDS, markdownExport } from '../registry.ts'
 import { isEmptyBase } from './firstRun.ts'
-import { ImportRecords } from './ImportRecords.tsx'
 import { ChangeList } from './WhatsNew.tsx'
-import { DEFAULT_THRESHOLDS, readThreshold, THRESHOLD_PROBLEM, type Thresholds } from './review.ts'
-import { readThresholds, saveThresholds } from './useReview.ts'
 
 const LABELS: Record<SyncedStore, string> = {
   categories: 'Категории',
-  presets: 'Пресеты',
-  templates: 'Шаблоны дня',
-  notes: 'Заметки и план',
-  time: 'Блоки времени',
-  reviews: 'Обзоры недели',
+  dishes: 'Блюда',
+  templates: 'Шаблоны приёмов',
+  norms: 'Нормы недели',
+  intake: 'Записи еды',
 }
 
 type Row = { store: SyncedStore; live: number; total: number }
@@ -62,8 +37,8 @@ function describe(error: unknown): string {
  * оглавление. Итог у заголовка говорит, стоит ли разворачивать, — отсутствие
  * копии видно и у свёрнутого.
  *
- * Синхронизация — первой: беда с ней видна в итоге у заголовка, и сюда
- * приходят по точке на шестерёнке «Сегодня».
+ * В Этапе 0 разделов два: копия файлом и «О приложении». Синхронизация
+ * встаёт первой в Этапе 2, импорт и markdown — в своих этапах (Р-16).
  */
 export function Settings() {
   const [state, setState] = useState<State>({ status: 'loading' })
@@ -95,28 +70,7 @@ export function Settings() {
         <h1>Настройки</h1>
       </header>
 
-      <SyncSettings onChanged={load} />
-
       <DataTransfer onChanged={load} />
-
-      <Reminders />
-
-      <ReviewSection />
-
-      <ScreenNamesSection />
-
-      {/* Категории, кнопки, группы и нормы живут у учёта; сюда — ссылкой (Р-81). */}
-      <section className="block">
-        <Link className="link-card" to="/time/categories">
-          <span className="link-card__main">
-            <span className="link-card__title">Категории и группы</span>
-            <span className="link-card__sub">кнопки, группы, нормы, архив</span>
-          </span>
-          <span className="link-card__go" aria-hidden="true">
-            ›
-          </span>
-        </Link>
-      </section>
 
       <About state={state} />
     </>
@@ -223,10 +177,6 @@ function DataTransfer({ onChanged }: { onChanged: () => Promise<void> }) {
   const [error, setError] = useState('')
   const [lastSaved, setLastSaved] = useState<string | null | undefined>(undefined)
   const [sharable] = useState(canShareFiles)
-  /** Что выгружать в markdown (Р-79): разделы — все, период — всё время. */
-  const [kinds, setKinds] = useState<RecordKind[]>([...KIND_ORDER])
-  const [span, setSpan] = useState('')
-  const months = monthChoices(useRecordDates(), today())
 
   // Дата последней выгрузки лежит в настройках: они не синхронизируются,
   // и это правильно — «когда я забирал копию» у каждого устройства своё.
@@ -240,7 +190,7 @@ function DataTransfer({ onChanged }: { onChanged: () => Promise<void> }) {
     setError('')
     try {
       const snapshot = await db.exportAll()
-      const sent = await deliver(via, `deluvremya-${today()}.json`, JSON.stringify(snapshot, null, 2), 'application/json')
+      const sent = await deliver(via, `trapeza-${today()}.json`, JSON.stringify(snapshot, null, 2), 'application/json')
       if (!sent) return
       // Браузер не сообщает, дошёл ли файл до диска: диалог мог быть отменён.
       // Отметка означает «выгрузку запускали», а не «копия точно есть».
@@ -248,29 +198,6 @@ function DataTransfer({ onChanged }: { onChanged: () => Promise<void> }) {
       await db.settings.set(LAST_EXPORT, at)
       setLastSaved(at)
       setNote(via === 'share' ? 'Копия отправлена' : 'Файл сохранён')
-    } catch (failure) {
-      setError(describe(failure))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  /**
-   * Markdown — для чтения глазами и на случай отказа от приложения (Р-63):
-   * записи остаются текстом, который открывается где угодно. Отметку
-   * о выгрузке не ставит — из markdown не восстановиться.
-   */
-  async function saveMarkdown(via: Via) {
-    setBusy(true)
-    setNote('')
-    setError('')
-    try {
-      const snapshot = await db.exportAll()
-      const text = markdownExport(snapshot.data, today(), { kinds, span: exportSpan(span) })
-      if (!(await deliver(via, `deluvremya-${today()}.md`, text, 'text/markdown'))) return
-      setNote(
-        `Markdown ${via === 'share' ? 'отправлен' : 'сохранён'}. Он для чтения: обратно в приложение загружается только копия.`,
-      )
     } catch (failure) {
       setError(describe(failure))
     } finally {
@@ -342,70 +269,6 @@ function DataTransfer({ onChanged }: { onChanged: () => Promise<void> }) {
         </p>
       </Fold>
 
-      {/* Читать без приложения (Р-63): в одну сторону, не копия. */}
-      <Fold id="settings:transfer:markdown" title="Markdown для чтения" sub folded>
-        <p className="muted">
-          Записи одним файлом: заметки, учёт по дням, обзоры — раздел на вид, внутри месяцы и дни.
-          Разделы и период — ниже, по умолчанию всё. Открывается где угодно; обратно в приложение не
-          загружается — для этого копия.
-        </p>
-        {/* Что выгружать (Р-79): разделы и период; шапка файла это называет. */}
-        <div className="chips" role="group" aria-label="Разделы markdown">
-          {KIND_ORDER.map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              className={kinds.includes(kind) ? 'chip chip--on' : 'chip'}
-              aria-pressed={kinds.includes(kind)}
-              onClick={() => setKinds(kinds.includes(kind) ? kinds.filter((each) => each !== kind) : [...kinds, kind])}
-            >
-              {KINDS[kind].label}
-            </button>
-          ))}
-        </div>
-        <label className="field">
-          <span>Период</span>
-          <select name="md-period" value={span} onChange={(event) => setSpan(event.target.value)}>
-            <option value="">За всё время</option>
-            {yearChoices(months).map((year) => (
-              <option key={`y:${year}`} value={`y:${year}`}>
-                {year} год
-              </option>
-            ))}
-            {months.map((month) => (
-              <option key={`m:${month}`} value={`m:${month}`}>
-                {monthTitle(month)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="row row--wrap">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => void saveMarkdown('file')}
-            disabled={busy || kinds.length === 0}
-          >
-            Сохранить markdown
-          </button>
-          {sharable && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => void saveMarkdown('share')}
-              disabled={busy || kinds.length === 0}
-            >
-              Поделиться markdown
-            </button>
-          )}
-        </div>
-      </Fold>
-
-      {/* Чужие записи — свой вход: копия приложения сюда не принимается (Р-08). */}
-      <Fold id="settings:transfer:import" title="Импорт записей" sub folded>
-        <ImportRecords onChanged={onChanged} />
-      </Fold>
-
       {/* .txt — копия, отправленная через «Поделиться» (см. deliver). */}
       <input
         ref={input}
@@ -473,383 +336,6 @@ function download(name: string, text: string, type: string): void {
   link.click()
   // Ссылка держит содержимое в памяти, пока её не отпустить.
   URL.revokeObjectURL(url)
-}
-
-// ─── Названия экранов (Р-26) ───────────────────────────────────────────────
-
-/**
- * Свои названия вкладок. Пустое поле — название по умолчанию. Итог
- * у свёрнутого — нынешние названия: видно, не разворачивая.
- */
-function ScreenNamesSection() {
-  const names = useScreenNames()
-  const [draft, setDraft] = useState<Record<ScreenKey, string> | null>(null)
-  const [note, setNote] = useState('')
-  const value = draft ?? names
-
-  async function save(input: Partial<Record<ScreenKey, string>>) {
-    setNote('')
-    try {
-      await saveScreenNames(input)
-      setDraft(null)
-      setNote('Сохранено')
-    } catch (failure) {
-      setNote(describe(failure))
-    }
-  }
-
-  return (
-    <Fold
-      id="settings:names"
-      title="Названия экранов"
-      summary={SCREEN_KEYS.map((key) => names[key]).join(' · ')}
-      folded
-    >
-      <form
-        className="form"
-        onSubmit={(event) => {
-          event.preventDefault()
-          void save(value)
-        }}
-      >
-        {SCREEN_KEYS.map((key) => (
-          <label key={key} className="field">
-            <span>Вкладка {quoted(DEFAULT_SCREEN_NAMES[key])}</span>
-            <input
-              name={`screen-${key}`}
-              maxLength={MAX_SCREEN_NAME}
-              value={value[key]}
-              onChange={(event) => setDraft({ ...value, [key]: event.target.value })}
-            />
-          </label>
-        ))}
-        <p className="muted">
-          Названия — этого устройства. Ярлыки по долгому тапу на иконке и название приложения остаются
-          прежними: они зашиты при установке.
-        </p>
-        {note && <p className="muted">{note}</p>}
-        <div className="form__actions">
-          <button type="button" className="btn" onClick={() => void save({})}>
-            Вернуть по умолчанию
-          </button>
-          <button type="submit" className="btn btn--primary">
-            Сохранить
-          </button>
-        </div>
-      </form>
-    </Fold>
-  )
-}
-
-// ─── Обзор недели (Р-48) ──────────────────────────────────────────────────
-
-/**
- * Пороги разбора в обзоре: висяк и замысел без движения. У свёрнутого —
- * нынешние пороги. Пороги — этого устройства: синхронизируемых настроек нет.
- */
-function ReviewSection() {
-  const [current, setCurrent] = useState<Thresholds | null>(null)
-  const [draft, setDraft] = useState<{ stale: string; goal: string } | null>(null)
-  const [note, setNote] = useState('')
-
-  useEffect(() => {
-    void readThresholds()
-      .catch(() => DEFAULT_THRESHOLDS)
-      .then((read) => {
-        setCurrent(read)
-        setDraft({ stale: String(read.stale), goal: String(read.goal) })
-      })
-  }, [])
-
-  async function save() {
-    if (!draft) return
-    const stale = readThreshold(draft.stale)
-    const goal = readThreshold(draft.goal)
-    if (stale === null || goal === null) {
-      setNote(THRESHOLD_PROBLEM)
-      return
-    }
-    setNote('')
-    try {
-      await saveThresholds({ stale, goal })
-      setCurrent({ stale, goal })
-      setNote('Сохранено')
-    } catch (failure) {
-      setNote(describe(failure))
-    }
-  }
-
-  return (
-    <Fold
-      id="settings:review"
-      title="Обзор недели"
-      summary={current ? `висяки — ${days(current.stale)}, замыслы — ${days(current.goal)}` : undefined}
-      folded
-    >
-      {draft && (
-        <form
-          className="form"
-          noValidate
-          onSubmit={(event) => {
-            event.preventDefault()
-            void save()
-          }}
-        >
-          <label className="field">
-            <span>Висяк — дело лежит в неразобранном столько дней и дольше</span>
-            <input
-              name="review-stale"
-              inputMode="numeric"
-              value={draft.stale}
-              onChange={(event) => setDraft({ ...draft, stale: event.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>Замысел без движения — ни одного дела столько дней</span>
-            <input
-              name="review-goal"
-              inputMode="numeric"
-              value={draft.goal}
-              onChange={(event) => setDraft({ ...draft, goal: event.target.value })}
-            />
-          </label>
-          <p className="muted">
-            По умолчанию — {days(DEFAULT_THRESHOLDS.stale)} и {days(DEFAULT_THRESHOLDS.goal)}. Пороги — этого
-            устройства: на телефоне и компьютере они свои.
-          </p>
-          {note && <p className="muted">{note}</p>}
-          <div className="form__actions">
-            <button type="submit" className="btn btn--primary">
-              Сохранить
-            </button>
-          </div>
-        </form>
-      )}
-    </Fold>
-  )
-}
-
-// ─── Напоминания (Р-14, Р-24) — раздел из «Дневников» ─────────────────────
-
-const REMINDER_TEXT: Record<ReminderStatus, string> = {
-  unsupported:
-    'Этот браузер не умеет напоминать, когда приложение закрыто. Напоминания работают ' +
-    'в Chrome на Android у установленного приложения.',
-  denied: 'Уведомления для этого сайта запрещены в настройках браузера. Разрешить их можно только там.',
-  off:
-    'Примерно раз в сутки приложение напомнит, если за день не учтено ни минуты, а в воскресенье ' +
-    'и понедельник — если обзор недели не проведён. Даже закрытое.',
-  'not-installed':
-    'Уведомления разрешены, но фоновую проверку браузер не дал. Так бывает, когда приложение ' +
-    'открыто во вкладке, а не установлено иконкой.',
-  on: 'Включено. Браузер проверяет примерно раз в сутки, точное время выбирает сам.',
-}
-
-/** Итог у свёрнутого раздела: включены ли. */
-const REMINDER_SUMMARY: Record<ReminderStatus, string> = {
-  unsupported: 'браузер не умеет',
-  denied: 'запрещены',
-  off: 'выключены',
-  'not-installed': 'выключены',
-  on: 'включены',
-}
-
-const CHECK_TEXT: Record<RemindResult | 'denied' | 'unsupported', string> = {
-  shown: 'Уведомление показано.',
-  quiet: 'Уведомление показано без звука.',
-  nothing:
-    'Напоминать не о чем — за сегодня время уже учтено, обзор недели не ждёт. Пришло пустое уведомление, ' +
-    'чтобы было видно, что они доходят.',
-  already: 'Сегодня уже напоминало.',
-  failed: 'Показать уведомление не вышло.',
-  denied: 'Уведомления запрещены — показать нечего.',
-  unsupported: REMINDER_TEXT.unsupported,
-}
-
-/** Чем кончилось фоновое пробуждение — строка журнала. */
-const WAKE_TEXT: Record<RemindResult, string> = {
-  shown: 'показано со звуком',
-  quiet: 'показано без звука — вне окна',
-  nothing: 'напоминать было не о чем',
-  already: 'сегодня уже напоминало',
-  failed: 'показать не вышло',
-}
-
-/**
- * Напоминание о незаполненном дне.
- *
- * Включается кнопкой, а не само: разрешение на уведомления браузер
- * спрашивает только по действию человека. «Проверить сейчас» — чтобы
- * не ждать сутки, прежде чем узнать, работает ли.
- */
-function Reminders() {
-  const [status, setStatus] = useState<ReminderStatus | null>(null)
-  const [hours, setHours] = useState<ReminderWindow | null>(null)
-  const [wakes, setWakes] = useState<Wake[] | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [note, setNote] = useState('')
-
-  useEffect(() => {
-    void reminderStatus()
-      .then(setStatus)
-      .catch(() => setStatus('unsupported'))
-    void readWindow().then(setHours)
-    void readWakes()
-      .then(setWakes)
-      .catch(() => setWakes([]))
-  }, [])
-
-  async function pickHours(next: ReminderWindow) {
-    setHours(next)
-    await saveWindow(next)
-  }
-
-  async function act(action: () => Promise<void>) {
-    setBusy(true)
-    setNote('')
-    try {
-      await action()
-    } catch (failure) {
-      setNote(describe(failure))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const summary =
-    status === null
-      ? undefined
-      : status === 'on' && hours
-        ? `включены, ${hours.from}–${hours.to}`
-        : REMINDER_SUMMARY[status]
-  const usable = status !== null && status !== 'unsupported' && status !== 'denied'
-
-  // Пока состояние читается, раздел без итога и без содержимого: мигать
-  // «не поддерживается» на полсекунды незачем.
-  return (
-    <Fold id="settings:reminders" title="Напоминания" summary={summary} folded>
-      {status !== null && (
-        <>
-          <p className="muted">{REMINDER_TEXT[status]}</p>
-
-          <div className="row row--wrap">
-            {(status === 'off' || status === 'not-installed') && (
-              <button
-                type="button"
-                className="btn"
-                disabled={busy}
-                onClick={() => void act(async () => setStatus(await enableReminders()))}
-              >
-                Включить напоминания
-              </button>
-            )}
-            {status === 'on' && (
-              <button
-                type="button"
-                className="btn"
-                disabled={busy}
-                onClick={() =>
-                  void act(async () => {
-                    await disableReminders()
-                    setStatus('off')
-                  })
-                }
-              >
-                Выключить
-              </button>
-            )}
-            {usable && (
-              <button
-                type="button"
-                className="btn"
-                disabled={busy}
-                onClick={() => void act(async () => setNote(CHECK_TEXT[await checkReminder()]))}
-              >
-                Проверить сейчас
-              </button>
-            )}
-          </div>
-
-          {note && <p className="muted">{note}</p>}
-
-          {usable && hours && (
-            <>
-              <div className="row row--wrap">
-                <HourField
-                  label="Со звуком с"
-                  value={hours.from}
-                  onPick={(from) => void pickHours({ ...hours, from })}
-                />
-                <HourField label="до" value={hours.to} onPick={(to) => void pickHours({ ...hours, to })} />
-              </div>
-              <p className="muted">
-                Вне этих часов уведомление приходит без звука и ждёт в шторке. Если в тот же день
-                браузер проверит ещё раз уже в эти часы — повторит со звуком. Часы — по времени
-                этого устройства.
-              </p>
-            </>
-          )}
-
-          {usable && <WakeLog wakes={wakes} />}
-        </>
-      )}
-    </Fold>
-  )
-}
-
-const HOURS = Array.from({ length: 24 }, (_, hour) => hour)
-
-function HourField({ label, value, onPick }: { label: string; value: number; onPick: (hour: number) => void }) {
-  return (
-    <label className="field">
-      <span>{label}</span>
-      <select value={value} onChange={(event) => onPick(Number(event.target.value))}>
-        {HOURS.map((hour) => (
-          <option key={hour} value={hour}>{`${hour}:00`}</option>
-        ))}
-      </select>
-    </label>
-  )
-}
-
-function wakeTime(at: string): string {
-  return new Date(at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
-
-/**
- * Журнал фоновых проверок: будит ли их браузер вообще и чем они кончаются.
- * Без него «ни разу не пришло само» — три неразличимых случая: не будил;
- * будил, но напоминать было не о чем; будил, но сегодня уже было.
- */
-function WakeLog({ wakes }: { wakes: Wake[] | null }) {
-  if (wakes === null) return null
-
-  const last = wakes[0]
-  if (!last) {
-    return <p className="muted">Фоновая проверка на этом устройстве ещё ни разу не просыпалась.</p>
-  }
-
-  return (
-    <>
-      <p className="muted">
-        Фоновая проверка последний раз: {wakeTime(last.at)} — {WAKE_TEXT[last.result]}.
-      </p>
-      {wakes.length > 1 && (
-        <Fold id="settings:reminders:wakes" title="Все пробуждения" summary={wakes.length} sub folded>
-          <table className="stats">
-            <tbody>
-              {wakes.map((wake) => (
-                <tr key={wake.at}>
-                  <td>{wakeTime(wake.at)}</td>
-                  <td className="muted">{WAKE_TEXT[wake.result]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Fold>
-      )}
-    </>
-  )
 }
 
 /**

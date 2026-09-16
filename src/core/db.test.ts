@@ -3,7 +3,7 @@ import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db.ts'
 import { LOCAL_STORES, SCHEMA_VERSION, SYNCED_STORES } from './model.ts'
-import type { Category, Migration, TimeBlock } from './model.ts'
+import type { Category, Intake, Migration } from './model.ts'
 
 /**
  * Хранилище целиком: разбор файла, совместимость версий и работа с базой.
@@ -35,11 +35,11 @@ const T2 = '2026-09-02T10:00:00.000Z'
 const T3 = '2026-09-03T10:00:00.000Z'
 
 function item(id: string, over: Partial<Category> = {}): Category {
-  return { id, updatedAt: T1, name: 'Чтение', order: 0, kind: 'useful', ...over }
+  return { id, updatedAt: T1, name: 'Каши', order: 0, ...over }
 }
 
-function mark(id: string, over: Partial<TimeBlock> = {}): TimeBlock {
-  return { id, updatedAt: T1, categoryId: 'c1', date: '2026-09-01', minutes: 30, ...over }
+function mark(id: string, over: Partial<Intake> = {}): Intake {
+  return { id, updatedAt: T1, date: '2026-09-01', meal: 'breakfast', dishId: 'dish:гречка', ...over }
 }
 
 /**
@@ -54,7 +54,7 @@ function pause(): Promise<void> {
 /** Соединение мимо `db` — единственный способ проверить, что он построил. */
 function openRaw(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('deluvremya')
+    const request = indexedDB.open('trapeza')
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error ?? new Error('не открылась'))
   })
@@ -324,9 +324,9 @@ describe('слияние по updatedAt', () => {
 
 describe('очередь изменений', () => {
   it('пометка несёт хранилище, запись и время правки', async () => {
-    const saved = await db.put('time', mark('e1'))
+    const saved = await db.put('intake', mark('e1'))
 
-    expect(await db.listDirty()).toEqual([{ store: 'time', id: 'e1', at: saved.updatedAt }])
+    expect(await db.listDirty()).toEqual([{ store: 'intake', id: 'e1', at: saved.updatedAt }])
   })
 
   it('повторная правка одной записи даёт одну пометку, а не две', async () => {
@@ -378,7 +378,7 @@ describe('очередь изменений', () => {
 
   it('различает записи с одинаковым id в разных хранилищах', async () => {
     await db.put('categories', item('одинаковый'))
-    await db.put('time', mark('одинаковый'))
+    await db.put('intake', mark('одинаковый'))
 
     expect(await db.listDirty()).toHaveLength(2)
   })
@@ -390,12 +390,12 @@ describe('оповещение об изменениях', () => {
     const off = db.onChange((event) => seen.push(event))
 
     await db.putMany('categories', [item('i1'), item('i2')])
-    await db.putRemote('time', [mark('e1')])
+    await db.putRemote('intake', [mark('e1')])
     off()
 
     expect(seen).toEqual([
       { store: 'categories', origin: 'local', count: 2 },
-      { store: 'time', origin: 'remote', count: 1 },
+      { store: 'intake', origin: 'remote', count: 1 },
     ])
   })
 
@@ -477,7 +477,7 @@ describe('слепок', () => {
 
   it('свой же слепок переживает круг через файл', async () => {
     await db.putMany('categories', [item('i1'), item('i2')])
-    await db.put('time', mark('e1'))
+    await db.put('intake', mark('e1'))
     const text = JSON.stringify(await db.exportAll())
 
     await db.close()
@@ -487,7 +487,7 @@ describe('слепок', () => {
 
     expect(applied).toBe(3)
     expect(await db.count('categories')).toBe(2)
-    expect(await db.count('time')).toBe(1)
+    expect(await db.count('intake')).toBe(1)
   })
 })
 
@@ -552,32 +552,28 @@ describe('схема базы', () => {
       for (const store of SYNCED_STORES) {
         expect([...tx.objectStore(store).indexNames]).toContain('updatedAt')
       }
-      expect([...tx.objectStore('notes').indexNames].sort()).toEqual([
-        'capturedOn',
-        'plannedFor',
-        'updatedAt',
-      ])
-      expect([...tx.objectStore('time').indexNames].sort()).toEqual(['date', 'updatedAt'])
-      expect([...tx.objectStore('reviews').indexNames].sort()).toEqual(['updatedAt', 'weekStart'])
+      expect([...tx.objectStore('intake').indexNames].sort()).toEqual(['date', 'updatedAt'])
+      for (const store of ['categories', 'dishes', 'templates', 'norms'] as const) {
+        expect([...tx.objectStore(store).indexNames]).toEqual(['updatedAt'])
+      }
     } finally {
       raw.close()
     }
   })
 
-  it('заметка без дат пишется и читается: null в индексе записи не мешает — Р-08', async () => {
-    // Индекс по `capturedOn` и `plannedFor`, а у входящего без даты оба null.
-    // Null не ключ IndexedDB: такая запись просто не попадает в индекс.
-    await db.put('notes', {
-      id: 'n1',
-      updatedAt: T1,
-      text: 'Мысль без даты',
-      kind: 'thought',
-      capturedOn: null,
-      plannedFor: null,
-      status: 'open',
-    })
+  it('база называется trapeza — на общем origin только имя разводит приложения семьи', async () => {
+    await db.ready()
+    const names = (await indexedDB.databases()).map((each) => each.name)
+    expect(names).toContain('trapeza')
+    expect(names).not.toContain('deluvremya')
+    expect(names).not.toContain('dnevniki')
+  })
 
-    expect(await db.get('notes', 'n1')).toMatchObject({ text: 'Мысль без даты', capturedOn: null })
-    expect(await db.count('notes')).toBe(1)
+  it('запись с испорченной датой пишется и читается: индекс по date её не теряет', async () => {
+    // Такая запись приезжает из undated (02-Архитектура, «Раскладка»).
+    await db.put('intake', mark('e1', { date: '2026-02-30' }))
+
+    expect(await db.get('intake', 'e1')).toMatchObject({ date: '2026-02-30' })
+    expect(await db.count('intake')).toBe(1)
   })
 })

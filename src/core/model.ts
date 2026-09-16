@@ -5,8 +5,8 @@
  * Имена полей и опциональность взяты оттуда дословно. Если модель меняется,
  * сначала правится документ, потом этот файл, а не наоборот.
  *
- * Каркас файла — версия схемы, хранилища, миграции — взят из «Дневников»
- * (Р-11); типы записей — этого проекта.
+ * Каркас файла — версия схемы, хранилища, миграции — взят из «Делу Время»
+ * (Р-06); типы записей — этого проекта.
  */
 
 /**
@@ -17,9 +17,9 @@ export const SCHEMA_VERSION = 1
 
 // ─── Общая часть ───────────────────────────────────────────────────────────
 
-/** Та же `Base`, что в «Дневниках»: ленты приложений семьи сливаются без переделок. */
+/** Та же `Base`, что в «Дневниках» и «Делу Время»: ленты приложений семьи сливаются без переделок (Р-06). */
 export type Base = {
-  /** ULID, генерируется локально, сортируется по времени */
+  /** ULID, генерируется локально; у справочников — из названия (Р-12) */
   id: string
   /** ISO 8601, время последнего изменения записи */
   updatedAt: string
@@ -29,97 +29,97 @@ export type Base = {
 
 // ─── Справочники ───────────────────────────────────────────────────────────
 
-/** Категория учёта времени: Зарядка, Шахматы, Чтение, Ютуб, Прогулка, Прочее… */
+/**
+ * Категория: Каши, Супы особые, Мясное, Сладости, Сладкие напитки, Компот… (Р-15)
+ * id — `cat:<название>` (Р-12)
+ */
 export type Category = Base & {
   name: string
-  /** порядок на экране дня и в сводках */
+  /** порядок в итогах дня и недели */
   order: number
-  /** признак для обзора недели, не для дневного экрана (Р-05) */
-  kind: 'useful' | 'neutral' | 'idle'
-  archived?: boolean
-  /** группа: кнопки и строки итогов по группам (Р-81) */
+  /** укрупнение для сводок: «Каши», «Пироги и сладости», «Напитки» (Р-15) */
   group?: string
-  /** у надгробия: куда перенесены её блоки (Р-22, Р-29) */
+  archived?: boolean
+  /** у надгробия: куда слита или перенесена (Р-12) */
   movedTo?: string
-  /** норма недели (Р-45); все правила необязательны */
-  norm?: {
-    /** дней с блоком — не меньше */
-    minDays?: number
-    /** минут — не меньше */
-    minMinutes?: number
-    /** минут — не больше */
-    maxMinutes?: number
-    /** YYYY-MM-DD, с какого дня считается история (Р-53, Р-56) */
-    since?: string
-  }
 }
 
-/** Пресет — кнопка «Чтение +30». Заводится с экрана категории. */
-export type Preset = Base & {
-  categoryId: string
-  minutes: number
+/**
+ * Блюдо или продукт: «Гречка», «Борщ», «Компот», «Сырок» — одна структура (Р-02, Р-07)
+ * id — `dish:<название>` (Р-12)
+ */
+export type Dish = Base & {
+  name: string
+  /** нет — «без категории»; итоги называют, сколько таких (Р-02) */
+  categoryId?: string
+  /** вес порции по умолчанию */
+  portionGrams?: number
+  /** ккал на 100 г — справочно (Р-03) */
+  kcal100?: number
+  /** ккал на порцию — когда граммы не известны: «кофе с молоком» */
+  kcalPortion?: number
+  /** поздним этапом (Р-07); необязательное поле — без миграции */
+  recipe?: Recipe
+  archived?: boolean
+  /** у надгробия: куда слито (Р-12) */
+  movedTo?: string
+}
+
+/** Рецепт — часть блюда, а не сущность (Р-07) */
+export type Recipe = {
+  /** ингредиенты — блюда справочника по названию */
+  items: { dish: string; grams: number }[]
+  /** выход готового */
+  yieldGrams?: number
+  /** как готовить */
+  text?: string
+}
+
+/** Шаблон приёма: «обычный завтрак». Заводится из записанного приёма (Р-08) */
+export type MealTemplate = Base & {
+  name: string
+  /** для какого приёма предлагается */
+  meal: Meal
+  items: { dishId: string; portions?: number; grams?: number }[]
   order: number
 }
 
-/** Шаблон дня: «рабочий», «выходной». Порождает записи плана на конкретный день. */
-export type DayTemplate = Base & {
+/** Норма недели над набором категорий: «Сладкое — не больше 4 дней» (Р-13) */
+export type Norm = Base & {
   name: string
-  items: { title: string; estMin?: number; main?: boolean }[]
+  categoryIds: string[]
+  /** дней с записью — не меньше */
+  minDays?: number
+  /** дней с записью — не больше */
+  maxDays?: number
+  /** YYYY-MM-DD; нет — вся история (отступление от «Делу Время», Р-13) */
+  since?: string
   order: number
 }
 
 // ─── Записи ────────────────────────────────────────────────────────────────
 
-/** Одна сущность на входящее, дело, наблюдение, замысел и пункт плана дня (Р-12, Р-31). */
-export type Note = Base & {
-  text: string
-  /** Не выбран при захвате — 'task' (Р-13). */
-  kind: NoteKind
-  /** YYYY-MM-DD, когда записана; null → дата неизвестна (Р-08) */
-  capturedOn: string | null
-  /** YYYY-MM-DD, на какой день поставлена; null → лежит во входящих */
-  plannedFor: string | null
-  /** главное дело того дня, на который поставлена */
-  main?: boolean
-  /** место пункта в своём дне; нет — после упорядоченных, по id (Р-75) */
-  order?: number
-  /** оценка длительности, для реализма плана */
-  estMin?: number
-  status: NoteStatus
-  /** YYYY-MM-DD, когда выполнено */
-  doneOn?: string
-  /** Связи с другими записями: `note:<id>` — замысел, к которому относится дело (Р-31). */
-  refs?: string[]
-}
-
-/** Дело, мысль (она же наблюдение), замысел (Р-31). */
-export type NoteKind = 'task' | 'thought' | 'goal'
-export type NoteStatus = 'open' | 'done' | 'someday' | 'dropped'
-
-/** Блок учтённого времени. */
-export type TimeBlock = Base & {
-  /** YYYY-MM-DD, дата события, не дата ввода */
+/** Съеденное: одно блюдо в одном приёме одного дня (Р-11) */
+export type Intake = Base & {
+  /** YYYY-MM-DD, день еды, не день ввода */
   date: string
-  categoryId: string
-  minutes: number
-  /** фоновая активность: покер под ютуб */
-  bgCategoryId?: string
+  meal: Meal
+  dishId: string
+  /** нет — 1; дробные законны: «полпорции» */
+  portions?: number
+  /** правка порции граммами; есть — главнее portions */
+  grams?: number
+  /** ЧЧ:ММ, по желанию (Р-14) */
+  at?: string
+  /** «в кафе», «изжога» (Р-05, Р-15) */
   note?: string
   refs?: string[]
 }
 
-/** Проведённый обзор недели. */
-export type Review = Base & {
-  /** YYYY-MM-DD, понедельник недели */
-  weekStart: string
-  /** ISO 8601, когда обзор провели */
-  doneAt: string
-  note?: string
-  refs?: string[]
-}
+export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snack'
 
-/** Вид записи. Три значения — ровно то, что описано выше. */
-export type RecordKind = 'note' | 'time' | 'review'
+/** Вид записи. Одно значение — ровно то, что описано выше. */
+export type RecordKind = 'intake'
 
 // ─── Хранилища ─────────────────────────────────────────────────────────────
 
@@ -128,7 +128,7 @@ export type RecordKind = 'note' | 'time' | 'review'
  * в репозитории данных (02-Архитектура, «Локальное хранилище»).
  * Порядок значения не имеет, но менять имена нельзя — они в базе на устройстве.
  */
-export const SYNCED_STORES = ['categories', 'presets', 'templates', 'notes', 'time', 'reviews'] as const
+export const SYNCED_STORES = ['categories', 'dishes', 'templates', 'norms', 'intake'] as const
 
 /**
  * Локальные хранилища. Не синхронизируются никогда:
@@ -140,14 +140,13 @@ export type SyncedStore = (typeof SYNCED_STORES)[number]
 export type LocalStore = (typeof LOCAL_STORES)[number]
 export type StoreName = SyncedStore | LocalStore
 
-/** Что лежит в каком хранилище. Позволяет db.get('notes') возвращать Note. */
+/** Что лежит в каком хранилище. Позволяет db.get('intake') возвращать Intake. */
 export type StoreRecord = {
   categories: Category
-  presets: Preset
-  templates: DayTemplate
-  notes: Note
-  time: TimeBlock
-  reviews: Review
+  dishes: Dish
+  templates: MealTemplate
+  norms: Norm
+  intake: Intake
 }
 
 /** Любая синхронизируемая запись. */
