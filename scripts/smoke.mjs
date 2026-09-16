@@ -217,7 +217,9 @@ const HELPERS = `
     [...document.querySelectorAll(tag)].find((el) => el.textContent.trim().startsWith(prefix))
 `
 
-const act = (body) => run(`(() => {${HELPERS}\n${body}\n})()`)
+// Точка с запятой между помощниками и шагом: шаг, начатый с `[` или `(`,
+// иначе склеился бы с последней строкой помощников в одно выражение.
+const act = (body) => run(`(() => {${HELPERS};\n${body}\n})()`)
 
 /** Текст всего экрана. По нему и делаются проверки. */
 const screen = () => run('document.querySelector("#root")?.innerText ?? ""')
@@ -326,7 +328,11 @@ async function scenario() {
   // ─ Первый запуск.
   await open(APP)
   const start = await screen()
-  check('«Сегодня» открылось', has(start, 'Сегодня') && has(start, 'приёмы дня'), start.replace(/\s+/g, ' ').slice(0, 120))
+  check(
+    '«Сегодня» открылось; пустая база ведёт к блюдам и импорту',
+    has(start, 'Сегодня') && has(start, 'блюд нет') && has(start, 'Импорт записей'),
+    start.replace(/\s+/g, ' ').slice(0, 120),
+  )
   const database = await run(`indexedDB.databases().then((list) => list.map((each) => each.name).join(', '))`)
   check('база называется trapeza — Р-10', database === 'trapeza', `базы: ${database}`)
 
@@ -535,6 +541,51 @@ async function scenario() {
     `${line(merged, 'Найдено')}; ${line(merged, 'борщ')}`,
   )
 
+  // ─ «Сегодня»: запись тапом по блюду в открытом текущем приёме (Р-11).
+  // Какой приём текущий — по часам машины, поэтому ищется открытый список.
+  await act(`byText('a', 'Сегодня')?.click()`)
+  await sleep(700)
+  const openMeals = await run(`[...document.querySelectorAll('.meal')]
+    .filter((el) => el.querySelector('.meal__pick'))
+    .map((el) => el.querySelector('.fold__btn').textContent.trim())`)
+  check('на «Сегодня» открыт ровно один приём — текущий, не перекус', openMeals?.length === 1 && openMeals[0] !== 'Перекус', JSON.stringify(openMeals))
+  const tapShchi = `[...document.querySelectorAll('.meal__pick .chip')].find((el) => el.textContent.trim() === 'Щи')?.click()`
+  await act(tapShchi)
+  await sleep(700)
+  const recorded = await screen()
+  check('тап по блюду записывает — одно действие', has(recorded, `${openMeals?.[0]}: Щи`) && has(recorded, '1 блюдо'), line(recorded, ': Щи'))
+  await act(tapShchi)
+  await sleep(700)
+  check('повторный тап прибавляет порцию к той же записи', has(await screen(), 'Щи · 2 порции'), line(await screen(), 'Щи ·'))
+
+  // Правка: шаг ½ вниз, время.
+  await act(`document.querySelector('[aria-label="Поправить: Щи"]')?.click()`)
+  await sleep(400)
+  await act(`
+    document.querySelector('[aria-label="Меньше на половину"]')?.click()
+  `)
+  await sleep(200)
+  await act(`
+    set(document.querySelector('[name="intake-at"]'), '14:05')
+    byText('button', 'Сохранить')?.click()
+  `)
+  await sleep(700)
+  const edited = await screen()
+  check('правка записи: порции шагом ½ и время', has(edited, 'Щи · 1,5 порции · 14:05'), line(edited, 'Щи ·'))
+
+  // Перезагрузка — запись на месте: полная загрузка по ярлыку, адрес
+  // отличается не только хешем. Прошлый день — из адреса.
+  await open(`${APP}?go=write`)
+  check('после перезагрузки запись на месте', has(await screen(), 'Щи · 1,5 порции'))
+  await go('/?day=2026-02-04')
+  const past = await screen()
+  check(
+    'прошлый день по адресу: записи того дня, приёмы закрыты, есть «К сегодняшнему дню»',
+    has(past, '4 февраля 2026') && has(past, 'Компот · 2 порции') && has(past, 'К сегодняшнему дню') &&
+      (await run(`document.querySelectorAll('.meal__pick').length`)) === 0,
+    line(past, 'Компот'),
+  )
+
   // ─ Service worker: без него нет ни офлайна, ни автообновления.
   const worker = await run(`Promise.race([
     navigator.serviceWorker.ready.then((r) => r.active?.state ?? 'нет'),
@@ -558,7 +609,7 @@ async function scenario() {
   const offlineAbout = await screen()
   check(
     'без сети данные на месте',
-    /(?:^|\n)Записи еды\s*2/.test(offlineAbout.replace(/ /g, ' ')),
+    /(?:^|\n)Записи еды\s*3/.test(offlineAbout.replace(/ /g, ' ')),
     /(?:^|\n)(Записи еды\s*\d+)/.exec(offlineAbout)?.[1] ?? '',
   )
   await offline(false)

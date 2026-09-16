@@ -1,5 +1,5 @@
 /**
- * Разбор форм справочника: блюдо и категория. Что ввели строками — в поля
+ * Разбор форм: блюдо и правка записи еды. Что ввели строками — в поля
  * записи или в причину отказа.
  *
  * Чистые функции: правило «пустое поле — поле снимается, кривое — отказ
@@ -7,7 +7,9 @@
  */
 
 import { numberOf } from '../../core/importing.ts'
-import type { Category, Dish } from '../../core/model.ts'
+import type { Category, Dish, Intake, Meal } from '../../core/model.ts'
+import { timeOf } from './import.ts'
+import { portions as portionsText } from './labels.ts'
 import { cleanName, nameProblem, type NameProblem } from './names.ts'
 
 /** Поля формы блюда — как их видит человек: строками. */
@@ -113,4 +115,78 @@ export function dishFacts(dish: Dish): string {
   if (dish.kcal100 !== undefined) parts.push(`${number(dish.kcal100)} ккал/100 г`)
   if (dish.kcalPortion !== undefined) parts.push(`${number(dish.kcalPortion)} ккал/порция`)
   return parts.join(' · ')
+}
+
+// ─── Запись еды ────────────────────────────────────────────────────────────
+
+/** Шаг кнопок «−» и «+» у порций (Р-18). */
+export const PORTION_STEP = 0.5
+
+/** Поля правки записи — строками, как в форме. */
+export type IntakeInput = { meal: Meal; portions: string; grams: string; at: string; note: string }
+
+function numberText(value: number | undefined): string {
+  return value === undefined ? '' : String(value).replace('.', ',')
+}
+
+export function intakeInput(record: Intake): IntakeInput {
+  return {
+    meal: record.meal,
+    portions: numberText(record.portions ?? 1),
+    grams: numberText(record.grams),
+    at: record.at ?? '',
+    note: record.note ?? '',
+  }
+}
+
+/**
+ * Шаг порций кнопкой: на половину вверх или вниз, не меньше половины.
+ * Кривое поле — от одной порции.
+ */
+export function stepPortions(text: string, direction: 1 | -1): string {
+  const value = numberOf(text)
+  const from = value === null || value <= 0 ? 1 : value
+  const next = Math.max(PORTION_STEP, Math.round((from + direction * PORTION_STEP) * 100) / 100)
+  return numberText(next)
+}
+
+/**
+ * Правка записи → запись или причина отказа. `others` — живые записи того
+ * же дня: в приёме, куда запись переезжает, этого блюда быть не должно —
+ * одинаковые блюда приёма пишутся одной записью.
+ */
+export function readIntake(
+  input: IntakeInput,
+  record: Intake,
+  others: readonly Intake[],
+): { record: Intake } | { problem: string } {
+  const portions = input.portions.trim() ? numberOf(input.portions) : 1
+  if (portions === null || portions <= 0) return { problem: 'Порции — число больше нуля' }
+  const grams = input.grams.trim() ? numberOf(input.grams) : undefined
+  if (grams === null || (grams !== undefined && grams <= 0)) return { problem: 'Граммы — число больше нуля' }
+  const at = input.at.trim() ? timeOf(input.at) : undefined
+  if (at === null) return { problem: 'Время — ЧЧ:ММ' }
+
+  const twin = others.find(
+    (other) => !other.deleted && other.id !== record.id && other.meal === input.meal && other.dishId === record.dishId,
+  )
+  if (twin) return { problem: 'В этом приёме это блюдо уже записано — поправьте порции там' }
+
+  const next: Intake = { ...record, meal: input.meal }
+  const set = <K extends 'portions' | 'grams' | 'at' | 'note'>(key: K, value: Intake[K] | undefined) => {
+    if (value === undefined) delete next[key]
+    else next[key] = value
+  }
+  set('portions', portions === 1 ? undefined : portions)
+  set('grams', grams)
+  set('at', at)
+  set('note', input.note.trim() || undefined)
+  return { record: next }
+}
+
+/** Порция записи словами: «1,5 порции», «250 г», пусто — одна порция. */
+export function amountText(record: Intake): string {
+  if (record.grams !== undefined) return `${numberText(record.grams)} г`
+  if (record.portions === undefined || record.portions === 1) return ''
+  return portionsText(record.portions)
 }
