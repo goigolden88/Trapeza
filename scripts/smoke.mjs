@@ -476,6 +476,65 @@ async function scenario() {
   const prompt = await screen()
   check('промпт — «Трапезы», с разделами еды', has(prompt, '"format": "trapeza-import"') && has(prompt, '"dishes" —'))
 
+  // ─ «Блюда»: вкладка, блюда по категориям, новое блюдо формой.
+  await act(`byText('a', 'Блюда')?.click()`)
+  await sleep(700)
+  const dishesScreen = await screen()
+  check(
+    '«Блюда» открываются вкладкой: итог и блоки категорий',
+    has(dishesScreen, '2 блюда · 2 категории') && has(dishesScreen, 'Напитки') && has(dishesScreen, 'Без категории'),
+    dishesScreen.replace(/\s+/g, ' ').slice(0, 160),
+  )
+  await unfold('Новое блюдо')
+  await act(`
+    set(document.querySelector('[name="dish-name"]'), 'Щи')
+    const select = document.querySelector('[name="dish-category"]')
+    select.value = 'cat:супы'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    set(document.querySelector('[name="dish-portionGrams"]'), '350')
+    set(document.querySelector('[name="dish-kcal100"]'), '32,5')
+  `)
+  await act(`byText('button', 'Добавить')?.click()`)
+  await sleep(700)
+  await unfold('Супы')
+  const withShchi = await screen()
+  check(
+    'новое блюдо заводится формой, в свою категорию, с калорийностью',
+    has(withShchi, '3 блюда') && has(withShchi, 'Щи · порция 350 г · 32,5 ккал/100 г'),
+    line(withShchi, 'Щи'),
+  )
+
+  // ─ Слияние одноимённых (Р-12): «БОРЩ» с другого устройства, пришедший
+  // копией, сливается с «Борщом» сам — содержимое от поздней правки.
+  await go('/settings')
+  const twin = join(profile, 'twin.json')
+  writeFileSync(
+    twin,
+    JSON.stringify({
+      schemaVersion: 1,
+      exportedAt: '2026-09-01T10:00:00.000Z',
+      data: {
+        dishes: [{ id: 'dish:борщ:01TWIN', updatedAt: '2030-01-01T00:00:00.000Z', name: 'БОРЩ', kcal100: 55 }],
+      },
+    }),
+  )
+  const doc = await send('DOM.getDocument')
+  const copyField = await send('DOM.querySelector', {
+    nodeId: doc.root.nodeId,
+    selector: 'input[type=file][accept*="text/plain"]',
+  })
+  await send('DOM.setFileInputFiles', { nodeId: copyField.nodeId, files: [twin] })
+  await sleep(3000)
+  await go('/dishes')
+  await act(`document.querySelector('.search') && set(document.querySelector('.search'), 'борщ')`)
+  await sleep(500)
+  const merged = await screen()
+  check(
+    'одноимённое блюдо из копии слилось само — одно, с калорийностью поздней правки',
+    has(merged, 'Найдено 1 из 3 блюд') && has(merged, 'БОРЩ · 55 ккал/100 г'),
+    `${line(merged, 'Найдено')}; ${line(merged, 'борщ')}`,
+  )
+
   // ─ Service worker: без него нет ни офлайна, ни автообновления.
   const worker = await run(`Promise.race([
     navigator.serviceWorker.ready.then((r) => r.active?.state ?? 'нет'),
@@ -556,7 +615,7 @@ async function dataScenario(file) {
   check('копия загрузилась через «Восстановить из копии»', loaded !== null, loaded?.[0] ?? restored.slice(0, 160))
 
   // Маршруты прибавляются вместе с экранами, по этапам.
-  const routes = ['/', '/settings']
+  const routes = ['/', '/dishes', '/settings']
 
   for (const route of routes) {
     await go(route)

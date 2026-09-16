@@ -11,7 +11,10 @@ import { ScrollButtons } from './ScrollButtons.tsx'
  * Названия вкладок постоянные: свои названия экранов «Делу Время» (их Р-26)
  * в «Трапезу» не берутся (Р-16).
  */
-const TABS: readonly { to: string; name: string; end: boolean }[] = [{ to: '/', name: 'Сегодня', end: true }]
+const TABS: readonly { to: string; name: string; end: boolean }[] = [
+  { to: '/', name: 'Сегодня', end: true },
+  { to: '/dishes', name: 'Блюда', end: false },
+]
 
 export function Layout() {
   return (
