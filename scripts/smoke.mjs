@@ -416,7 +416,11 @@ async function scenario() {
     }),
   )
   const { root } = await send('DOM.getDocument')
-  const { nodeId } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: 'input[type=file]' })
+  // Поле копии: у него в списке типов есть text/plain. У поля импорта записей — нет.
+  const { nodeId } = await send('DOM.querySelector', {
+    nodeId: root.nodeId,
+    selector: 'input[type=file][accept*="text/plain"]',
+  })
   await send('DOM.setFileInputFiles', { nodeId, files: [restore] })
   await sleep(1000)
   const restored = await screen()
@@ -426,6 +430,51 @@ async function scenario() {
     /Блюда\s*1/.test(restored.replace(/ /g, ' ')) && /Записи еды\s*1/.test(restored.replace(/ /g, ' ')),
     `${line(restored, 'Блюда')}; ${line(restored, 'Записи еды')}`,
   )
+
+  // ─ Импорт записей текстом, как ответ ИИ: в блоке ```json. Борщ уже есть —
+  // пропуск; категория из того же файла заводится один раз (02-Архитектура).
+  await unfold('Импорт записей')
+  const importFile = {
+    format: 'trapeza-import',
+    version: 1,
+    categories: [{ name: 'Супы', group: 'Первое' }],
+    dishes: [
+      { name: 'борщ', category: 'Супы', portionGrams: 300, kcal100: 50 },
+      { name: 'Компот', category: 'Напитки', kcalPortion: 80 },
+    ],
+    intake: [{ date: '2026-02-04', meal: 'lunch', dish: 'Компот', portions: 2 }],
+  }
+  const importText = `Вот файл:\n\`\`\`json\n${JSON.stringify(importFile)}\n\`\`\``
+  await act(`
+    set(document.querySelector('.import__text'), ${JSON.stringify(importText)})
+    byText('button', 'Разобрать')?.click()
+  `)
+  await sleep(700)
+  const planned = await screen()
+  check(
+    'импорт: до записи — сводка, уже имеющееся названо',
+    has(planned, 'Добавится: 2 категории, 1 блюдо, 1 запись еды') && has(planned, 'пропущено, не перезаписано: 1'),
+    `${line(planned, 'Добавится')}; ${line(planned, 'пропущено')}`,
+  )
+  await act(`startsWith('button', 'Загрузить')?.click()`)
+  await sleep(1000)
+  const imported = await screen()
+  // Строка счётчика — название и число в начале строки: в тексте импорта
+  // выше те же слова встречаются в предложении.
+  const counts = (text) =>
+    ['Категории', 'Блюда', 'Записи еды'].map(
+      (label) => `${label} ${new RegExp(`(?:^|\\n)${label}\\s+(\\d+)`).exec(text)?.[1] ?? '?'}`,
+    )
+  check('импорт записывает по кнопке', has(imported, 'Загружено записей: 4'), line(imported, 'Загружено'))
+  check(
+    'после импорта — две категории, два блюда, две записи',
+    counts(imported).join('; ') === 'Категории 2; Блюда 2; Записи еды 2',
+    counts(imported).join('; '),
+  )
+  await unfold('Как подготовить файл')
+  await unfold('Показать промпт')
+  const prompt = await screen()
+  check('промпт — «Трапезы», с разделами еды', has(prompt, '"format": "trapeza-import"') && has(prompt, '"dishes" —'))
 
   // ─ Service worker: без него нет ни офлайна, ни автообновления.
   const worker = await run(`Promise.race([
@@ -450,8 +499,8 @@ async function scenario() {
   const offlineAbout = await screen()
   check(
     'без сети данные на месте',
-    /Записи еды\s*1/.test(offlineAbout.replace(/ /g, ' ')),
-    line(offlineAbout, 'Записи еды'),
+    /(?:^|\n)Записи еды\s*2/.test(offlineAbout.replace(/ /g, ' ')),
+    /(?:^|\n)(Записи еды\s*\d+)/.exec(offlineAbout)?.[1] ?? '',
   )
   await offline(false)
 }

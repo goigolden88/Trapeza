@@ -10,6 +10,7 @@ import { InstallNote } from '../ui/Install.tsx'
 import { ReportBug } from '../ui/Report.tsx'
 import { useSyncStatus } from '../ui/useSync.ts'
 import { isEmptyBase } from './firstRun.ts'
+import { ImportRecords } from './ImportRecords.tsx'
 import { ChangeList } from './WhatsNew.tsx'
 
 const LABELS: Record<SyncedStore, string> = {
@@ -37,8 +38,8 @@ function describe(error: unknown): string {
  * оглавление. Итог у заголовка говорит, стоит ли разворачивать, — отсутствие
  * копии видно и у свёрнутого.
  *
- * В Этапе 0 разделов два: копия файлом и «О приложении». Синхронизация
- * встаёт первой в Этапе 2, импорт и markdown — в своих этапах (Р-16).
+ * Разделов два: «Экспорт и импорт» — копия файлом и импорт записей — и «О
+ * приложении». Синхронизация встаёт первой в Этапе 2, markdown — в Этапе 5 (Р-16).
  */
 export function Settings() {
   const [state, setState] = useState<State>({ status: 'loading' })
@@ -267,6 +268,10 @@ function DataTransfer({ onChanged }: { onChanged: () => Promise<void> }) {
           Восстановление не стирает то, что уже есть: записи сливаются по времени правки,
           побеждает более поздняя.
         </p>
+      </Fold>
+
+      <Fold id="settings:transfer:import" title="Импорт записей" sub folded>
+        <ImportRecords onChanged={onChanged} />
       </Fold>
 
       {/* .txt — копия, отправленная через «Поделиться» (см. deliver). */}
