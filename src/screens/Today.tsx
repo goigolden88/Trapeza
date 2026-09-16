@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { db } from '../core/db.ts'
-import { addDays, formatDate, formatDateLong, nowIso, plural, type DateStr } from '../core/dates.ts'
+import { addDays, formatDate, formatDateLong, formatPeriod, nowIso, plural, weekPeriod, type DateStr } from '../core/dates.ts'
 import { ulid } from '../core/id.ts'
-import type { Dish, Intake, Meal } from '../core/model.ts'
+import type { Dish, Intake, Meal, Norm } from '../core/model.ts'
 import { activeDishes } from '../modules/food/catalog.ts'
 import { dayMeals, tapDish, viewedDay } from '../modules/food/day.ts'
 import { amountText, intakeInput, readIntake, stepPortions, type IntakeInput } from '../modules/food/forms.ts'
 import { kcalText } from '../modules/food/kcal.ts'
-import { FORMS, formatNumber, MEAL_NAMES, MEALS, portions } from '../modules/food/labels.ts'
+import { FORMS, formatNumber, MEAL_NAMES, MEALS, normCheckText, portions, touchText } from '../modules/food/labels.ts'
 import { currentMeal, DEFAULT_MEAL_HOURS, MEAL_HOURS_KEY, readMealHours, type MealHours } from '../modules/food/meals.ts'
 import { normName } from '../modules/food/names.ts'
+import { activeNorms, checkWeek, indexDays, touchedNorms } from '../modules/food/norms.ts'
 import { byFrequency, previousMeal, repeatItems } from '../modules/food/repeat.ts'
 import { summarize, type CategoryLine } from '../modules/food/summary.ts'
 import { useFood, type Food } from '../modules/food/useFood.ts'
+import { weekRoute } from '../modules/food/week.ts'
 import { Fold } from '../ui/Fold.tsx'
 import { useNow } from '../ui/useNow.ts'
 import { syncDot } from '../ui/syncDot.ts'
@@ -115,12 +117,13 @@ export function Today() {
 
       {food.status === 'failed' && <p className="error">Записи не прочитались: {food.error}</p>}
       {/* Ключ — день: открытый приём и правка записи — про свой день. */}
-      {food.status === 'ready' && <Day key={day} day={day} isToday={isToday} data={food.data} hours={hours} />}
+      {food.status === 'ready' && <Day key={day} day={day} today={today} data={food.data} hours={hours} />}
     </>
   )
 }
 
-function Day({ day, isToday, data, hours }: { day: DateStr; isToday: boolean; data: Data; hours: MealHours }) {
+function Day({ day, today, data, hours }: { day: DateStr; today: DateStr; data: Data; hours: MealHours }) {
+  const isToday = day === today
   const now = useNow(CLOCK_MS, isToday)
   // undefined — приём не выбирали: у сегодняшнего дня открыт текущий.
   const [chosen, setChosen] = useState<Meal | null | undefined>(undefined)
@@ -177,10 +180,12 @@ function Day({ day, isToday, data, hours }: { day: DateStr; isToday: boolean; da
           dishes={dishes}
           live={live}
           intake={data.intake}
+          norms={data.norms}
           save={save}
           onNote={setNote}
         />
       ))}
+      <NormsBlock day={day} today={today} data={data} dishes={dishes} />
       <DaySummaryBlock records={Object.values(meals).flat()} dishes={dishes} data={data} />
     </>
   )
@@ -197,6 +202,7 @@ function MealBlock({
   dishes,
   live,
   intake,
+  norms,
   save,
   onNote,
 }: {
@@ -210,6 +216,7 @@ function MealBlock({
   dishes: ReadonlyMap<string, Dish>
   live: Dish[]
   intake: Intake[]
+  norms: Norm[]
   save: Save
   onNote: (text: string) => void
 }) {
@@ -261,6 +268,9 @@ function MealBlock({
           day={day}
           records={records}
           ordered={byFrequency(live, intake, meal, day)}
+          intake={intake}
+          dishes={dishes}
+          norms={norms}
           save={save}
           onNote={onNote}
         />
@@ -460,6 +470,9 @@ function DishPicker({
   day,
   records,
   ordered,
+  intake,
+  dishes,
+  norms,
   save,
   onNote,
 }: {
@@ -467,6 +480,9 @@ function DishPicker({
   day: DateStr
   records: Intake[]
   ordered: Dish[]
+  intake: Intake[]
+  dishes: ReadonlyMap<string, Dish>
+  norms: Norm[]
   save: Save
   onNote: (text: string) => void
 }) {
@@ -484,7 +500,10 @@ function DishPicker({
     }
     if (await save(() => db.put('intake', result.record))) {
       const amount = amountText(result.record)
-      onNote(`${MEAL_NAMES[meal]}: ${dish.name}${amount ? ` — ${amount}` : ''}`)
+      // Задетые нормы — по записям до тапа: запись в базу уже ушла, а экран
+      // перечитает её чуть позже.
+      const touches = touchedNorms(norms, intake, dishes, result.record).map(touchText)
+      onNote([`${MEAL_NAMES[meal]}: ${dish.name}${amount ? ` — ${amount}` : ''}`, ...touches].join(' · '))
     }
   }
 
@@ -519,6 +538,34 @@ function DishPicker({
         ))}
       </div>
     </div>
+  )
+}
+
+/**
+ * Нормы недели просматриваемого дня (Р-25): вся неделя, а не дни до него —
+ * запись задним числом отвечает на вопрос недели целиком. Без цвета (Р-23).
+ * Норм нет — блока нет.
+ */
+function NormsBlock({ day, today, data, dishes }: { day: DateStr; today: DateStr; data: Data; dishes: ReadonlyMap<string, Dish> }) {
+  const norms = activeNorms(data.norms)
+  if (norms.length === 0) return null
+  const index = indexDays(data.intake, dishes)
+
+  return (
+    <Fold id="today:norms" title="Нормы недели" summary={`${norms.length} ${plural(norms.length, FORMS.norm)}`} folded>
+      <p className="muted">{formatPeriod(weekPeriod(day))}</p>
+      <table className="stats norms-today">
+        <tbody>
+          {norms.map((norm) => (
+            <tr key={norm.id}>
+              <td>{norm.name}</td>
+              <td className="num">{normCheckText(norm, checkWeek(norm, index, day))}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <Link to={weekRoute(day, today)}>Неделя целиком</Link>
+    </Fold>
   )
 }
 

@@ -1011,6 +1011,38 @@ async function weekScenario() {
   )
   check('приёмы по дням: обед и ужин понедельника', /(?:^|\n)пн 16\s+—\s+1\s+1\s+—(?:\n|$)/.test(full), line(full, 'пн 16'))
 
+  // ─ «Сегодня» (Р-25): суббота 21 февраля — сладкое уже 5 дней недели.
+  // Торт в обед — строка нормы меняется сразу, и после тапа она названа;
+  // второй тап — порция, день уже в счёте.
+  await go('/?day=2026-02-21')
+  await unfold('Нормы недели')
+  const normRow = async () => line((await screen()).replace(/ /g, ' '), 'Сладкое\t')
+  const before = await normRow()
+  await act(`byText('button', 'Обед')?.click()`)
+  await sleep(400)
+  const tapCake = `[...document.querySelectorAll('.meal__pick .chip')].find((el) => el.textContent.trim() === 'Торт')?.click()`
+  await act(tapCake)
+  await sleep(900)
+  const afterTap = await screen()
+  const after = await normRow()
+  check(
+    '«Сегодня»: нормы недели дня; после записи сладкого строка нормы меняется сразу',
+    before.trim() === 'Сладкое\t5 дней при пределе 4' && after.trim() === 'Сладкое\t6 дней при пределе 4',
+    JSON.stringify([before, after]),
+  )
+  check(
+    'после тапа строка называет задетую норму',
+    line(afterTap, 'Обед: Торт').trim() === 'Обед: Торт · Сладкое: 6 дней при пределе 4',
+    line(afterTap, 'Обед: Торт'),
+  )
+  await act(tapCake)
+  await sleep(900)
+  const again = await screen()
+  check(
+    'второй тап — порция, день уже в счёте',
+    line(again, 'Обед: Торт').trim() === 'Обед: Торт — 2 порции · Сладкое: 6 дней при пределе 4 — день уже в счёте',
+    line(again, 'Обед: Торт'),
+  )
 }
 
 /**

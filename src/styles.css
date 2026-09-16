@@ -1383,3 +1383,10 @@ span.plan-item__text {
 .week-meals th.num {
   padding-left: 6px;
 }
+
+/* Нормы недели на «Сегодня»: итог нормы длинный — переносится, а не
+   распирает экран. */
+.norms-today td.num {
+  white-space: normal;
+  padding-left: 12px;
+}
