@@ -263,6 +263,19 @@ async function unfold(title) {
 }
 
 /**
+ * Тап по блюду в открытом приёме (Р-26). Блюда нет на виду — оно в свёрнутой
+ * категории: категории выбора разворачиваются, как это сделал бы человек.
+ */
+async function tapChip(name) {
+  const find = `[...document.querySelectorAll('.meal__pick .chip')].find((el) => el.textContent.trim() === ${JSON.stringify(name)})`
+  if (!(await run(`${find} !== undefined`))) {
+    await act(`document.querySelectorAll('.meal__pick .fold__btn[aria-expanded="false"]').forEach((el) => el.click())`)
+    await sleep(400)
+  }
+  await act(`${find}?.click()`)
+}
+
+/**
  * Полная загрузка страницы по адресу — как её открывает Android
  * из ярлыка. Адрес должен отличаться от текущего не только
  * хешем: иначе браузер сменит хеш без загрузки, и приём проверен не будет.
@@ -794,12 +807,26 @@ async function scenario() {
     .filter((el) => el.querySelector('.meal__pick'))
     .map((el) => el.querySelector('.fold__btn').textContent.trim())`)
   check('на «Сегодня» открыт ровно один приём — текущий, не перекус', openMeals?.length === 1 && openMeals[0] !== 'Перекус', JSON.stringify(openMeals))
-  const tapShchi = `[...document.querySelectorAll('.meal__pick .chip')].find((el) => el.textContent.trim() === 'Щи')?.click()`
-  await act(tapShchi)
+  // Выбор блюда (Р-26): категории — в ручном порядке, свёрнуты, «Без
+  // категории» — последней; блюдо, не бывшее в приёме, — только в категории.
+  const pickFolds = await run(`[...document.querySelectorAll('.meal__pick .fold__btn')]
+    .map((el) => el.textContent.trim() + ' ' + el.getAttribute('aria-expanded'))`)
+  const shchiShown = await run(`[...document.querySelectorAll('.meal__pick .chip')].some((el) => el.textContent.trim() === 'Щи')`)
+  check(
+    'выбор блюда: категории по порядку и свёрнуты, без категории — последней — Р-26',
+    JSON.stringify(pickFolds) === JSON.stringify(['Супы false', 'Напитки false', 'Без категории false']) && shchiShown === false,
+    `${JSON.stringify(pickFolds)}; Щи ${shchiShown ? 'на виду' : 'в категории'}`,
+  )
+  await unfold('Супы')
+  const soups = await run(`[...document.querySelectorAll('.meal__pick .fold__btn')].find((el) => el.textContent.trim() === 'Супы')
+    ?.closest('section')?.querySelectorAll('.chip').length`)
+  check('категория выбора разворачивается тапом — в ней её блюдо', soups === 1, `кнопок ${soups}`)
+  const tapShchi = () => tapChip('Щи')
+  await tapShchi()
   await sleep(700)
   const recorded = await screen()
   check('тап по блюду записывает — одно действие', has(recorded, `${openMeals?.[0]}: Щи`) && has(recorded, '1 блюдо'), line(recorded, ': Щи'))
-  await act(tapShchi)
+  await tapShchi()
   await sleep(700)
   check('повторный тап прибавляет порцию к той же записи', has(await screen(), 'Щи · 2 порции'), line(await screen(), 'Щи ·'))
 
@@ -838,11 +865,11 @@ async function scenario() {
   await sleep(400)
   // До 5 февраля в обеде: компот — два дня (2-го и 4-го), борщ — один (3-го,
   // из копии). По алфавиту борщ был бы первым — порядок проверяет частоту.
-  // Щи записаны в сентябре: позже дня, не в счёт.
-  const chips = await run(`[...document.querySelectorAll('.meal__pick .chip')].map((el) => el.textContent.trim())`)
+  // Щи записаны в сентябре: позже дня, в «Частые» не идут (Р-26).
+  const chips = await run(`[...document.querySelectorAll('.meal__pick .pick__frequent .chip')].map((el) => el.textContent.trim())`)
   check(
-    'порядок по частоте: наверху обеда — бывшее в обеде до этого дня, записанное позже — ниже',
-    chips?.[0] === 'Компот' && chips?.[1] === 'БОРЩ' && chips?.indexOf('Щи') > 1,
+    '«Частые» по частоте: бывшее в обеде до этого дня, записанное позже — нет — Р-26',
+    JSON.stringify(chips) === JSON.stringify(['Компот', 'БОРЩ']),
     JSON.stringify(chips),
   )
   await act(`document.querySelector('.meal__repeat')?.click()`)
@@ -1020,8 +1047,8 @@ async function weekScenario() {
   const before = await normRow()
   await act(`byText('button', 'Обед')?.click()`)
   await sleep(400)
-  const tapCake = `[...document.querySelectorAll('.meal__pick .chip')].find((el) => el.textContent.trim() === 'Торт')?.click()`
-  await act(tapCake)
+  const tapCake = () => tapChip('Торт')
+  await tapCake()
   await sleep(900)
   const afterTap = await screen()
   const after = await normRow()
@@ -1035,7 +1062,7 @@ async function weekScenario() {
     line(afterTap, 'Обед: Торт').trim() === 'Обед: Торт · Сладкое: 6 дней при пределе 4',
     line(afterTap, 'Обед: Торт'),
   )
-  await act(tapCake)
+  await tapCake()
   await sleep(900)
   const again = await screen()
   check(
@@ -1178,7 +1205,7 @@ async function syncScenario() {
   github.down = true
   const before = repoRecords(`intake/${month}.json`)?.length ?? 0
   await go('/')
-  await act(`[...document.querySelectorAll('.meal__pick .chip')].find((el) => el.textContent.trim() === 'Компот')?.click()`)
+  await tapChip('Компот')
   await sleep(6500)
   const queued = await run(`document.querySelector('.gear .dot') !== null`)
   await go('/settings')
@@ -1269,6 +1296,40 @@ async function dataScenario(file) {
       text.replace(/\s+/g, ' ').slice(0, 80),
     )
   }
+
+  // ─ Выбор блюда на настоящих данных (Р-26): «Частые» — не больше предела,
+  // в категориях — все живые блюда, поиск называет найденное из всех.
+  const copy = JSON.parse(readFileSync(file, 'utf8'))
+  const liveDishes = (copy.data?.dishes ?? []).filter((each) => !each.deleted && !each.archived).length
+  await go('/?day=2026-03-10')
+  const breakfastPick = `[...document.querySelectorAll('.meal')]
+    .find((el) => el.querySelector('.fold__btn')?.textContent.trim() === 'Завтрак')?.querySelector('.meal__pick')`
+  if (!(await run(`${breakfastPick} != null`))) await act(`byText('button', 'Завтрак')?.click()`)
+  await sleep(400)
+  const pick = await run(`(() => {
+    const pick = ${breakfastPick}
+    if (!pick) return null
+    return {
+      frequent: pick.querySelectorAll('.pick__frequent .chip').length,
+      sections: [...pick.querySelectorAll('.fold__summary')].map((el) => Number(el.textContent.replace(/[^0-9]/g, ''))),
+    }
+  })()`)
+  const inSections = (pick?.sections ?? []).reduce((sum, n) => sum + n, 0)
+  check(
+    'выбор блюда на настоящих данных: «Частые» не больше восьми, в категориях — все живые блюда',
+    pick !== null && pick.frequent > 0 && pick.frequent <= 8 && inSections === liveDishes,
+    `частых ${pick?.frequent}; в категориях ${inSections} из ${liveDishes}`,
+  )
+  await act(`set(${breakfastPick}.querySelector('.search'), 'к')`)
+  await sleep(500)
+  const searched = await screen()
+  const foundLine = /Найдено (\d+) из (\d+)/.exec(searched)
+  const foundHeads = await run(`${breakfastPick}.querySelectorAll('.pick__found .pick__label').length`)
+  check(
+    'поиск в приёме: найденное из всех живых блюд, под названиями категорий',
+    foundLine !== null && Number(foundLine[2]) === liveDishes && Number(foundLine[1]) > 0 && foundHeads > 0,
+    `${foundLine?.[0] ?? 'нет строки'}; заголовков ${foundHeads}`,
+  )
 
   // Норма над первой категорией формой — история по настоящим неделям
   // (Р-24). Профиль временный: норма уходит вместе с ним.

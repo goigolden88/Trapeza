@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { db } from '../core/db.ts'
 import { addDays, formatDate, formatDateLong, formatPeriod, nowIso, plural, weekPeriod, type DateStr } from '../core/dates.ts'
 import { ulid } from '../core/id.ts'
-import type { Dish, Intake, Meal, Norm } from '../core/model.ts'
+import type { Category, Dish, Intake, Meal, Norm } from '../core/model.ts'
 import { activeDishes } from '../modules/food/catalog.ts'
 import { dayMeals, tapDish, viewedDay } from '../modules/food/day.ts'
 import { amountText, intakeInput, readIntake, stepPortions, type IntakeInput } from '../modules/food/forms.ts'
@@ -12,7 +12,8 @@ import { FORMS, formatNumber, MEAL_NAMES, MEALS, normCheckText, portions, touchT
 import { currentMeal, DEFAULT_MEAL_HOURS, MEAL_HOURS_KEY, readMealHours, type MealHours } from '../modules/food/meals.ts'
 import { normName } from '../modules/food/names.ts'
 import { activeNorms, checkWeek, indexDays, touchedNorms } from '../modules/food/norms.ts'
-import { byFrequency, previousMeal, repeatItems } from '../modules/food/repeat.ts'
+import { frequentDishes, pickSections, searchSections, sectionsSize } from '../modules/food/picker.ts'
+import { previousMeal, repeatItems } from '../modules/food/repeat.ts'
 import { summarize, type CategoryLine } from '../modules/food/summary.ts'
 import { useFood, type Food } from '../modules/food/useFood.ts'
 import { weekRoute } from '../modules/food/week.ts'
@@ -179,6 +180,7 @@ function Day({ day, today, data, hours }: { day: DateStr; today: DateStr; data: 
           dayRecords={Object.values(meals).flat()}
           dishes={dishes}
           live={live}
+          categories={data.categories}
           intake={data.intake}
           norms={data.norms}
           save={save}
@@ -201,6 +203,7 @@ function MealBlock({
   dayRecords,
   dishes,
   live,
+  categories,
   intake,
   norms,
   save,
@@ -215,6 +218,7 @@ function MealBlock({
   dayRecords: Intake[]
   dishes: ReadonlyMap<string, Dish>
   live: Dish[]
+  categories: Category[]
   intake: Intake[]
   norms: Norm[]
   save: Save
@@ -267,7 +271,8 @@ function MealBlock({
           meal={meal}
           day={day}
           records={records}
-          ordered={byFrequency(live, intake, meal, day)}
+          live={live}
+          categories={categories}
           intake={intake}
           dishes={dishes}
           norms={norms}
@@ -462,14 +467,16 @@ function Repeat({
 }
 
 /**
- * Блюда приёма по частоте (Р-08, Р-17): тап — запись. Много блюд — поиск над
- * списком, и видно, сколько найдено из скольких.
+ * Выбор блюда в приёме (Р-26): «Частые» сверху, дальше все блюда по
+ * категориям, свёрнутыми; тап — запись. Много блюд — поиск над списком,
+ * найденное под названиями категорий, и видно, сколько найдено из скольких.
  */
 function DishPicker({
   meal,
   day,
   records,
-  ordered,
+  live,
+  categories,
   intake,
   dishes,
   norms,
@@ -479,18 +486,35 @@ function DishPicker({
   meal: Meal
   day: DateStr
   records: Intake[]
-  ordered: Dish[]
+  live: Dish[]
+  categories: Category[]
   intake: Intake[]
   dishes: ReadonlyMap<string, Dish>
   norms: Norm[]
   save: Save
   onNote: (text: string) => void
 }) {
-  const live = ordered
   const [query, setQuery] = useState('')
   const present = new Set(records.map((record) => record.dishId))
   const key = normName(query)
-  const shown = key ? live.filter((dish) => normName(dish.name).includes(key)) : live
+  const sections = pickSections(live, categories, intake, meal, day)
+  const frequent = frequentDishes(live, intake, meal, day)
+  const found = searchSections(sections, query)
+
+  const chips = (list: readonly Dish[]) => (
+    <div className="chips">
+      {list.map((dish) => (
+        <button
+          key={dish.id}
+          type="button"
+          className={present.has(dish.id) ? 'chip chip--on' : 'chip'}
+          onClick={() => void tap(dish)}
+        >
+          {dish.name}
+        </button>
+      ))}
+    </div>
+  )
 
   async function tap(dish: Dish) {
     const result = tapDish(records, dish.id, () => ({ id: ulid(), updatedAt: nowIso(), date: day, meal }))
@@ -520,23 +544,41 @@ function DishPicker({
           onChange={(event) => setQuery(event.target.value)}
         />
       )}
-      {key && (
-        <p className="muted">
-          Найдено {shown.length} из {live.length}
-        </p>
+      {key ? (
+        <>
+          <p className="muted">
+            Найдено {sectionsSize(found)} из {live.length}
+          </p>
+          {found.map((section) => (
+            <div key={section.id ?? 'loose'} className="pick__found">
+              <h3 className="pick__label">{section.name}</h3>
+              {chips(section.dishes)}
+            </div>
+          ))}
+        </>
+      ) : (
+        <>
+          {frequent.length > 0 && (
+            <div className="pick__frequent">
+              <h3 className="pick__label">Частые</h3>
+              {chips(frequent)}
+            </div>
+          )}
+          {/* Что свёрнуто — одно на все приёмы: категория та же. */}
+          {sections.map((section) => (
+            <Fold
+              key={section.id ?? 'loose'}
+              id={`pick:${section.id ?? 'loose'}`}
+              title={section.name}
+              summary={section.dishes.length}
+              sub
+              folded
+            >
+              {chips(section.dishes)}
+            </Fold>
+          ))}
+        </>
       )}
-      <div className="chips">
-        {shown.map((dish) => (
-          <button
-            key={dish.id}
-            type="button"
-            className={present.has(dish.id) ? 'chip chip--on' : 'chip'}
-            onClick={() => void tap(dish)}
-          >
-            {dish.name}
-          </button>
-        ))}
-      </div>
     </div>
   )
 }

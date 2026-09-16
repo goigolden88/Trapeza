@@ -1314,6 +1314,27 @@ span.plan-item__text {
   margin-top: 8px;
 }
 
+/* Выбор блюда (Р-26): «Частые» и найденное — подписью над кнопками,
+   категории — подгруппами-строками оглавления. */
+.pick__label {
+  margin: 8px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pick__frequent {
+  margin-bottom: 8px;
+}
+
+.meal__pick .fold--sub {
+  margin-bottom: 0;
+}
+
+.meal__pick .fold--sub:not(.fold--folded) {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
 /* «Как вчера» — строкой над списком блюд, выровнено по левому краю. */
 .meal__repeat {
   display: block;

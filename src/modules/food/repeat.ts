@@ -38,6 +38,26 @@ function before(intake: readonly Intake[], meal: Meal, day: DateStr): Intake[] {
  * истории.
  */
 export function byFrequency(dishes: readonly Dish[], intake: readonly Intake[], meal: Meal, day: DateStr): Dish[] {
+  const { recent, all } = mealFrequency(intake, meal, day)
+  const size = (map: ReadonlyMap<string, number>, id: string) => map.get(id) ?? 0
+  return [...dishes].sort(
+    (a, b) =>
+      size(recent, b.id) - size(recent, a.id) ||
+      size(all, b.id) - size(all, a.id) ||
+      a.name.localeCompare(b.name, 'ru'),
+  )
+}
+
+/**
+ * Частота блюд приёма до дня (Р-17): id блюда → в скольких днях оно было
+ * в этом приёме — за окно и за всю историю до дня. `counted` — то, по чему
+ * судится «было ли блюдо»: окно, а пустое окно — вся история.
+ */
+export function mealFrequency(
+  intake: readonly Intake[],
+  meal: Meal,
+  day: DateStr,
+): { recent: Map<string, number>; all: Map<string, number>; counted: Map<string, number> } {
   const from = windowStart(day)
   const recent = new Map<string, Set<string>>()
   const all = new Map<string, Set<string>>()
@@ -50,13 +70,9 @@ export function byFrequency(dishes: readonly Dish[], intake: readonly Intake[], 
     add(all, record)
     if (record.date >= from) add(recent, record)
   }
-  const size = (map: Map<string, Set<string>>, id: string) => map.get(id)?.size ?? 0
-  return [...dishes].sort(
-    (a, b) =>
-      size(recent, b.id) - size(recent, a.id) ||
-      size(all, b.id) - size(all, a.id) ||
-      a.name.localeCompare(b.name, 'ru'),
-  )
+  const sizes = (map: Map<string, Set<string>>) => new Map([...map].map(([id, days]) => [id, days.size]))
+  const result = { recent: sizes(recent), all: sizes(all) }
+  return { ...result, counted: result.recent.size > 0 ? result.recent : result.all }
 }
 
 /** Последний такой же приём до дня: его день и записи. Не было — null. */
