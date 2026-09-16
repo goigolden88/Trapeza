@@ -1320,3 +1320,66 @@ span.plan-item__text {
   text-align: left;
   min-height: 44px;
 }
+
+/* ─── Неделя: нормы (Р-23, Р-25) ─────────────────────────────────────────── */
+
+/* Норма — строка итога, под ней правило и история. Без цвета: превышение
+   говорит числом (Р-23). */
+.norm {
+  padding: 6px 0 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.norm .tblock__main {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: 16px;
+}
+
+.norm p {
+  margin: 2px 0 0;
+}
+
+.norm__history {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.norm__history .minibars {
+  flex: none;
+}
+
+/* Категории нормы галочками по группам. */
+.norm__categories {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.norm__categories legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.norm__group {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.norm__categories .check {
+  min-height: 36px;
+}
+
+/* Приёмы по дням: четыре числа в строку на узком экране. */
+.week-meals th {
+  font-size: 12px;
+}
+
+.week-meals td.num,
+.week-meals th.num {
+  padding-left: 6px;
+}

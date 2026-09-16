@@ -6,6 +6,7 @@ import { Layout } from './ui/Layout.tsx'
 import { Dishes } from './screens/Dishes.tsx'
 import { Today } from './screens/Today.tsx'
 import { Settings } from './screens/Settings.tsx'
+import { Week } from './screens/Week.tsx'
 
 /**
  * Роутинг через хеш: на GitHub Pages обычные пути дают 404 при обновлении
@@ -30,6 +31,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Today />} />
+          <Route path="week" element={<Week />} />
           <Route path="dishes" element={<Dishes />} />
           <Route path="settings" element={<Settings />} />
           {/* Незнакомый адрес — на главный. Так и ярлык на экран, которого

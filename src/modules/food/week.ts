@@ -118,6 +118,12 @@ export function weekKcalText(kcal: KcalSum, logged: number): string {
   return `в среднем ${formatKcal(kcal.kcal / logged)} ккал в день — за ${days} учёта, по ${kcal.counted} ${of}`
 }
 
+/** Маршрут «Недели» дня: текущая — без параметра. */
+export function weekRoute(day: DateStr, today: DateStr): string {
+  const monday = weekStart(day)
+  return monday === weekStart(today) ? '/week' : `/week?w=${monday}`
+}
+
 /** Адрес дня на «Сегодня» — для тапа по столбику. Кривой день адреса не получает. */
 export function dayHref(date: string): string | undefined {
   return isDateStr(date) ? `#/?day=${date}` : undefined

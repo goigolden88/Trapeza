@@ -894,6 +894,123 @@ async function scenario() {
     /(?:^|\n)(Записи еды\s*\d+)/.exec(offlineAbout)?.[1] ?? '',
   )
   await offline(false)
+
+  await weekScenario()
+}
+
+/**
+ * «Неделя» и нормы (Этап 3; Р-23…Р-25). Последним: записи трёх недель
+ * сдвинули бы счётчики прежних проверок.
+ *
+ * Копией приходят три полные недели учёта, 9 февраля — 1 марта 2026: каждый
+ * день кисель, торт — в первые 2, 5 и 3 дня. Неделя 2–8 февраля — из
+ * прежнего сценария: учёт в трёх-четырёх днях, сладкого нет.
+ */
+async function weekScenario() {
+  const intake = []
+  const at = '2026-09-01T10:00:00.000Z'
+  for (const [week, sweet] of [[0, 2], [1, 5], [2, 3]]) {
+    for (let day = 0; day < 7; day++) {
+      const date = new Date(Date.UTC(2026, 1, 9 + week * 7 + day)).toISOString().slice(0, 10)
+      const id = (n) => `01SMOKEWEEK${week}${day}${n}`.padEnd(26, '0')
+      intake.push({ id: id('A'), updatedAt: at, date, meal: 'lunch', dishId: 'dish:кисель' })
+      if (day < sweet) intake.push({ id: id('B'), updatedAt: at, date, meal: 'dinner', dishId: 'dish:торт' })
+    }
+  }
+  const weeks = join(profile, 'weeks.json')
+  writeFileSync(
+    weeks,
+    JSON.stringify({
+      schemaVersion: 1,
+      exportedAt: at,
+      data: {
+        categories: [{ id: 'cat:сладости', updatedAt: at, name: 'Сладости', order: 10, group: 'Пироги и сладости' }],
+        dishes: [
+          { id: 'dish:кисель', updatedAt: at, name: 'Кисель', categoryId: 'cat:напитки', kcalPortion: 80 },
+          { id: 'dish:торт', updatedAt: at, name: 'Торт', categoryId: 'cat:сладости' },
+        ],
+        intake,
+      },
+    }),
+  )
+  await go('/settings')
+  await unfold('Экспорт и импорт')
+  const doc = await send('DOM.getDocument')
+  const copyField = await send('DOM.querySelector', {
+    nodeId: doc.root.nodeId,
+    selector: 'input[type=file][accept*="text/plain"]',
+  })
+  await send('DOM.setFileInputFiles', { nodeId: copyField.nodeId, files: [weeks] })
+  await sleep(3000)
+
+  // ─ Вкладка и пустые нормы.
+  await act(`byText('a', 'Неделя')?.click()`)
+  await sleep(700)
+  const empty = await screen()
+  check(
+    '«Неделя» открывается вкладкой: текущая, учёт с основанием, норм нет',
+    has(empty, '· идёт') && /Учёт в \d+ (дне|днях) из \d/.test(empty) && has(empty, 'Норм пока нет'),
+    `${line(empty, 'идёт')}; ${line(empty, 'Учёт в')}`,
+  )
+
+  // ─ Норма формой: «Сладкое — не больше 4 дней», вся история.
+  await go('/week?w=2026-02-18')
+  await unfold('Нормы')
+  await act(`byText('button', 'Новая норма')?.click()`)
+  await sleep(400)
+  await act(`
+    set(document.querySelector('[name="norm-name"]'), 'Сладкое')
+    document.querySelector('[name="norm-category"][value="cat:сладости"]')?.click()
+    set(document.querySelector('[name="norm-max"]'), '4')
+  `)
+  await sleep(200)
+  await act(`byText('button', 'Сохранить')?.click()`)
+  await sleep(900)
+  const failedWeek = await screen()
+  // Неделя 16–22 февраля: торт 5 дней — провал, без ✓ (Р-23). История до
+  // неё: 2–8 февраля — учёт в трёх-четырёх днях без сладкого, исход ясен;
+  // 9–15 — 2 дня; 16–22 — 5: две из трёх (Р-24).
+  const normLine = line(failedWeek, 'Сладкое:')
+  check('норма заводится формой; провал недели — числом, без ✓', normLine.trim() === 'Сладкое: 5 дней при пределе 4', normLine)
+  check(
+    'история нормы — недели с ясным исходом до показанной: «выполнена в 2 из 3 недель»',
+    /(?:^|\n)выполнена в 2 из 3 недель(?:\n|$)/.test(failedWeek.replace(/ /g, ' ')),
+    line(failedWeek, 'выполнена'),
+  )
+  const colors = await run(`(() => {
+    const own = [...document.querySelectorAll('.norm, .norm *')].map((el) => getComputedStyle(el).color)
+    const plain = [getComputedStyle(document.body).color, getComputedStyle(document.querySelector('.muted')).color]
+    return { odd: [...new Set(own)].filter((color) => !plain.includes(color)), rows: document.querySelectorAll('.norm').length }
+  })()`)
+  check('норма без цвета: только цвет текста и серый (Р-23)', colors?.rows === 1 && colors.odd.length === 0, JSON.stringify(colors))
+
+  await go('/week?w=2026-02-11')
+  const metWeek = await screen()
+  check(
+    'выполненная неделя — с ✓; недель в счёт мало — сказано, сколько набралось',
+    line(metWeek, 'Сладкое:').trim() === 'Сладкое: 2 дня при пределе 4 ✓' && has(metWeek, 'в счёт, пока 2'),
+    `${line(metWeek, 'Сладкое:')}; ${line(metWeek, 'пока')}`,
+  )
+
+  // ─ Итоги недели 16–22 февраля.
+  await go('/week?w=2026-02-22')
+  await unfoldAll()
+  const full = (await screen()).replace(/ /g, ' ')
+  const columns = await run(`[...document.querySelectorAll('.chart a.chart__col')].map((el) => el.getAttribute('href'))`)
+  check(
+    'по дням: семь столбиков, тап ведёт в день на «Сегодня»',
+    columns?.length === 7 && columns[0] === '#/?day=2026-02-16',
+    JSON.stringify(columns),
+  )
+  check(
+    'учёт, состав с днями и калории в среднем — с основанием',
+    has(full, 'Учёт в 7 днях из 7') &&
+      /(?:^|\n)Сладости\s+5\s+5(?:\n|$)/.test(full) &&
+      has(full, 'В среднем 80 ккал в день — за 7 дней учёта, по 7 из 12 записей'),
+    `${line(full, 'Учёт в')}; ${line(full, 'Сладости')}; ${line(full, 'ккал в день')}`,
+  )
+  check('приёмы по дням: обед и ужин понедельника', /(?:^|\n)пн 16\s+—\s+1\s+1\s+—(?:\n|$)/.test(full), line(full, 'пн 16'))
+
 }
 
 /**

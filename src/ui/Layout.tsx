@@ -13,6 +13,7 @@ import { ScrollButtons } from './ScrollButtons.tsx'
  */
 const TABS: readonly { to: string; name: string; end: boolean }[] = [
   { to: '/', name: 'Сегодня', end: true },
+  { to: '/week', name: 'Неделя', end: false },
   { to: '/dishes', name: 'Блюда', end: false },
 ]
 

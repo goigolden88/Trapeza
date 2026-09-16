@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Category, Dish, Intake } from '../../core/model.ts'
-import { dayHref, loggedText, viewedWeek, weekKcalText, weekSummary } from './week.ts'
+import { dayHref, loggedText, viewedWeek, weekKcalText, weekRoute, weekSummary } from './week.ts'
 
 const at = '2026-09-17T10:00:00.000Z'
 const MON = '2026-02-02'
@@ -96,5 +96,7 @@ describe('итог недели — Р-01, Р-18, Р-25', () => {
   it('день на «Сегодня» — адресом', () => {
     expect(dayHref(MON)).toBe('#/?day=2026-02-02')
     expect(dayHref('кривая')).toBeUndefined()
+    expect(weekRoute('2026-09-17', '2026-09-17')).toBe('/week')
+    expect(weekRoute('2026-02-05', '2026-09-17')).toBe('/week?w=2026-02-02')
   })
 })
