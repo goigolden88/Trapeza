@@ -22,6 +22,7 @@ import {
   checkWeek,
   createNorm,
   indexDays,
+  moveNorm,
   MAX_LIMIT_DAYS,
   MIN_LIMIT_DAYS,
   MIN_NORM_DAYS,
@@ -180,7 +181,7 @@ function NormsBlock({
         </p>
       )}
       <ul className="plain">
-        {norms.map((norm) =>
+        {norms.map((norm, at) =>
           editing === norm.id ? (
             <li key={norm.id}>
               <NormEditor norm={norm} data={data} today={today} save={save} onDone={() => setEditing(null)} />
@@ -193,6 +194,9 @@ function NormsBlock({
               today={today}
               index={index}
               names={names}
+              first={at === 0}
+              last={at === norms.length - 1}
+              onMove={(step) => void save(() => db.putMany('norms', moveNorm(data.norms, norm.id, step)))}
               onEdit={() => setEditing(norm.id)}
             />
           ),
@@ -215,6 +219,9 @@ function NormRow({
   today,
   index,
   names,
+  first,
+  last,
+  onMove,
   onEdit,
 }: {
   norm: Norm
@@ -222,6 +229,10 @@ function NormRow({
   today: DateStr
   index: DayIndex
   names: ReadonlyMap<string, string>
+  first: boolean
+  last: boolean
+  /** Ручной порядок (Р-27): тот же — в «Нормах недели» на «Сегодня». */
+  onMove: (step: -1 | 1) => void
   onEdit: () => void
 }) {
   const check = checkWeek(norm, index, monday)
@@ -231,9 +242,17 @@ function NormRow({
 
   return (
     <li className="norm">
-      <button type="button" className="plain-btn tblock__main" aria-label={`Поправить норму: ${norm.name}`} onClick={onEdit}>
-        {norm.name}: {normCheckText(norm, check)}
-      </button>
+      <div className="norm__head">
+        <button type="button" className="plain-btn tblock__main" aria-label={`Поправить норму: ${norm.name}`} onClick={onEdit}>
+          {norm.name}: {normCheckText(norm, check)}
+        </button>
+        <button type="button" className="icon-btn" aria-label={`${norm.name} — выше`} disabled={first} onClick={() => onMove(-1)}>
+          ↑
+        </button>
+        <button type="button" className="icon-btn" aria-label={`${norm.name} — ниже`} disabled={last} onClick={() => onMove(1)}>
+          ↓
+        </button>
+      </div>
       <p className="muted">
         {normRuleText(norm)} · {categories}
       </p>

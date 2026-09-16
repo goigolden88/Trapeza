@@ -1270,6 +1270,39 @@ async function weekScenario() {
     line(again, 'Обед: Торт').trim() === 'Обед: Торт — 2 порции · Сладкое: 6 дней при пределе 4 — день уже в счёте',
     line(again, 'Обед: Торт'),
   )
+
+  // ─ Ручной порядок норм (Р-27): вторая норма встаёт последней, стрелкой —
+  // первой; тот же порядок — в «Нормах недели» на «Сегодня».
+  await go('/week?w=2026-02-18')
+  await unfold('Нормы')
+  await act(`byText('button', 'Новая норма')?.click()`)
+  await sleep(400)
+  await act(`
+    set(document.querySelector('[name="norm-name"]'), 'Главная')
+    document.querySelector('[name="norm-category"]')?.click()
+    set(document.querySelector('[name="norm-min"]'), '1')
+  `)
+  await sleep(200)
+  await act(`byText('button', 'Сохранить')?.click()`)
+  await sleep(900)
+  const normNames = () =>
+    run(`[...document.querySelectorAll('.norm .tblock__main')].map((el) => el.textContent.split(':')[0].trim())`)
+  const added = await normNames()
+  await act(`document.querySelector('[aria-label="Главная — выше"]')?.click()`)
+  await sleep(900)
+  const moved = await normNames()
+  const firstDisabled = await run(`document.querySelector('[aria-label="Главная — выше"]')?.disabled`)
+  await go('/?day=2026-02-21')
+  await unfold('Нормы недели')
+  const todayOrder = await run(`[...document.querySelectorAll('.norms-today tr')].map((el) => el.cells[0]?.textContent.trim())`)
+  check(
+    'норма стрелкой встаёт первой — на «Неделе» и в «Нормах недели» на «Сегодня»',
+    JSON.stringify(added) === JSON.stringify(['Сладкое', 'Главная']) &&
+      JSON.stringify(moved) === JSON.stringify(['Главная', 'Сладкое']) &&
+      firstDisabled === true &&
+      JSON.stringify(todayOrder) === JSON.stringify(['Главная', 'Сладкое']),
+    `${JSON.stringify(added)} → ${JSON.stringify(moved)}; «выше» у первой ${firstDisabled ? 'выключена' : 'включена'}; «Сегодня» ${JSON.stringify(todayOrder)}`,
+  )
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   checkWeek,
   createNorm,
   indexDays,
+  moveNorm,
   normHistory,
   normInput,
   NORM_MIN_WEEKS,
@@ -286,5 +287,34 @@ describe('форма нормы', () => {
     const made = createNorm([old, norm({ id: 'n9', order: 7, deleted: true })], changes, 'n2', 'now')
     expect(made).toEqual({ id: 'n2', updatedAt: 'now', name: 'Сладкое', categoryIds: ['cat:Сладости'], maxDays: 3, order: 1 })
     expect(activeNorms([made, old, norm({ id: 'n9', deleted: true })]).map((each) => each.id)).toEqual(['n1', 'n2'])
+  })
+})
+
+describe('ручной порядок норм — Р-27', () => {
+  const norms = [
+    norm({ id: 'a', name: 'А', order: 4 }),
+    norm({ id: 'b', name: 'Б', order: 4 }),
+    norm({ id: 'x', name: 'Удалена', order: 5, deleted: true }),
+    norm({ id: 'c', name: 'В', order: 9 }),
+  ]
+
+  it('сдвиг меняет соседей, порядок живых подряд с нуля, меняются только сдвинутые', () => {
+    expect(moveNorm(norms, 'c', -1).map((each) => [each.id, each.order])).toEqual([
+      ['a', 0],
+      ['c', 1],
+      ['b', 2],
+    ])
+    const once = norms.map((each) => ({ ...each, order: ['a', 'b', 'x', 'c'].indexOf(each.id) - (each.id === 'c' ? 1 : 0) }))
+    expect(moveNorm(once, 'a', 1).map((each) => [each.id, each.order])).toEqual([
+      ['b', 0],
+      ['a', 1],
+    ])
+  })
+
+  it('за край, удалённая и неизвестная — пусто', () => {
+    expect(moveNorm(norms, 'a', -1)).toEqual([])
+    expect(moveNorm(norms, 'c', 1)).toEqual([])
+    expect(moveNorm(norms, 'x', 1)).toEqual([])
+    expect(moveNorm(norms, 'нет', 1)).toEqual([])
   })
 })

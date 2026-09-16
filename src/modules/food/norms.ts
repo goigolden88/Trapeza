@@ -293,3 +293,19 @@ export function createNorm(norms: readonly Norm[], changes: NormChanges, id: str
   const order = norms.filter((norm) => !norm.deleted).reduce((max, norm) => Math.max(max, norm.order + 1), 0)
   return applyNorm({ id, updatedAt, name: '', categoryIds: [], order }, changes, updatedAt)
 }
+
+/**
+ * Сдвиг нормы на место выше или ниже среди живых (Р-27) — как `moveCategory`:
+ * порядок заново подряд с нуля, возвращаются только те, у кого он изменился.
+ * Сдвигать некуда — пусто.
+ */
+export function moveNorm(norms: readonly Norm[], id: string, step: -1 | 1): Norm[] {
+  const list = activeNorms(norms)
+  const from = list.findIndex((norm) => norm.id === id)
+  const a = list[from]
+  const b = list[from + step]
+  if (from === -1 || !a || !b) return []
+  list[from] = b
+  list[from + step] = a
+  return list.flatMap((norm, order) => (norm.order === order ? [] : [{ ...norm, order }]))
+}

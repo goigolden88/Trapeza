@@ -1381,8 +1381,17 @@ span.plan-item__text {
   border-bottom: 1px solid var(--line);
 }
 
+/* Итог нормы и стрелки порядка (Р-27) — одной строкой. */
+.norm__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .norm .tblock__main {
   display: block;
+  flex: 1;
+  min-width: 0;
   width: 100%;
   text-align: left;
   font-size: 16px;
