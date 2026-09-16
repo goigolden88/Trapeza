@@ -1257,7 +1257,7 @@ async function dataScenario(file) {
   check('копия загрузилась через «Восстановить из копии»', loaded !== null, loaded?.[0] ?? restored.slice(0, 160))
 
   // Маршруты прибавляются вместе с экранами, по этапам.
-  const routes = ['/', '/dishes', '/settings']
+  const routes = ['/', '/dishes', '/settings', '/week', '/week?w=2026-03-09', '/?day=2026-03-10']
 
   for (const route of routes) {
     await go(route)
@@ -1268,6 +1268,33 @@ async function dataScenario(file) {
       text.trim().length > 0 && !has(text, 'База не открылась') && !has(text, 'не прочитались'),
       text.replace(/\s+/g, ' ').slice(0, 80),
     )
+  }
+
+  // Норма над первой категорией формой — история по настоящим неделям
+  // (Р-24). Профиль временный: норма уходит вместе с ним.
+  await go('/week?w=2026-03-16')
+  await unfold('Нормы')
+  await act(`byText('button', 'Новая норма')?.click()`)
+  await sleep(400)
+  await act(`
+    set(document.querySelector('[name="norm-name"]'), 'Прогон')
+    document.querySelector('[name="norm-category"]')?.click()
+    set(document.querySelector('[name="norm-max"]'), '3')
+  `)
+  await sleep(200)
+  await act(`byText('button', 'Сохранить')?.click()`)
+  await sleep(900)
+  await unfoldAll()
+  const history = await screen()
+  check(
+    'норма на настоящих данных: история февраля–марта с основанием',
+    /выполнена в \d+ из \d+ недель/.test(history),
+    `${line(history, 'Прогон:')}; ${line(history, 'выполнена')}`,
+  )
+  for (const route of ['/?day=2026-03-10', '/week']) {
+    await go(route)
+    await unfoldAll()
+    check(`${route} — с нормой открылся`, !has(await screen(), 'не прочитались'))
   }
 }
 
