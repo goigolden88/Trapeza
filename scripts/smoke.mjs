@@ -608,6 +608,17 @@ async function scenario() {
     line(repeated, 'Компот'),
   )
 
+  // ─ Итог дня (Р-01, Р-18): порции по категориям, калории с основанием.
+  // Компот — 80 ккал на порцию, две порции.
+  check(
+    'итог дня: порции, категория, ккал с основанием',
+    has(repeated, 'Итог дня') &&
+      has(repeated, '2 порции в 1 записи') &&
+      has(repeated, '160 ккал по 1 из 1 записи') &&
+      /(?:^|\n)Напитки\s+2(?:\n|$)/.test(repeated),
+    `${line(repeated, 'в 1 записи')}; ${line(repeated, 'ккал по')}`,
+  )
+
   // ─ Service worker: без него нет ни офлайна, ни автообновления.
   const worker = await run(`Promise.race([
     navigator.serviceWorker.ready.then((r) => r.active?.state ?? 'нет'),

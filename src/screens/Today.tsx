@@ -7,11 +7,14 @@ import type { Dish, Intake, Meal } from '../core/model.ts'
 import { activeDishes } from '../modules/food/catalog.ts'
 import { dayMeals, tapDish, viewedDay } from '../modules/food/day.ts'
 import { amountText, intakeInput, readIntake, stepPortions, type IntakeInput } from '../modules/food/forms.ts'
-import { FORMS, MEAL_NAMES, MEALS } from '../modules/food/labels.ts'
+import { kcalText } from '../modules/food/kcal.ts'
+import { FORMS, formatNumber, MEAL_NAMES, MEALS, portions } from '../modules/food/labels.ts'
 import { currentMeal, DEFAULT_MEAL_HOURS, MEAL_HOURS_KEY, readMealHours, type MealHours } from '../modules/food/meals.ts'
 import { normName } from '../modules/food/names.ts'
 import { byFrequency, previousMeal, repeatItems } from '../modules/food/repeat.ts'
+import { summarize, type CategoryLine } from '../modules/food/summary.ts'
 import { useFood, type Food } from '../modules/food/useFood.ts'
+import { Fold } from '../ui/Fold.tsx'
 import { useNow } from '../ui/useNow.ts'
 import { useToday } from '../ui/useToday.ts'
 
@@ -173,6 +176,7 @@ function Day({ day, isToday, data, hours }: { day: DateStr; isToday: boolean; da
           onNote={setNote}
         />
       ))}
+      <DaySummaryBlock records={Object.values(meals).flat()} dishes={dishes} data={data} />
     </>
   )
 }
@@ -510,5 +514,67 @@ function DishPicker({
         ))}
       </div>
     </div>
+  )
+}
+
+/**
+ * Итог дня (Р-01, Р-18): порции по группам и категориям, калории с основанием.
+ * Группа из одной одноимённой категории — одной строкой. Блюда без категории
+ * названы отдельно: итог не прячет записи молча.
+ */
+function DaySummaryBlock({ records, dishes, data }: { records: Intake[]; dishes: ReadonlyMap<string, Dish>; data: Data }) {
+  const summary = summarize(records, dishes, data.categories)
+  if (summary.records === 0) return null
+  const kcal = kcalText(summary.kcal)
+
+  return (
+    <Fold id="today:summary" title="Итог дня" summary={portions(summary.portions)}>
+      <div className="day-sum">
+        <p className="lead">
+          {portions(summary.portions)} в {summary.records} {plural(summary.records, ['записи', 'записях', 'записях'])}
+        </p>
+        {kcal && <p className="muted">{kcal}</p>}
+        <table className="stats">
+          <tbody>
+            {summary.groups.flatMap((group) => {
+              const single = group.categories.length === 1 && (group.name === null || group.name === group.categories[0]?.name)
+              if (single) {
+                const only = group.categories[0] as CategoryLine
+                return [
+                  <tr key={only.id}>
+                    <td>{only.name}</td>
+                    <td className="num">{formatNumber(only.portions)}</td>
+                  </tr>,
+                ]
+              }
+              return [
+                <tr key={`group:${group.name}`} className="stats__group">
+                  <td>{group.name}</td>
+                  <td className="num">{formatNumber(group.portions)}</td>
+                </tr>,
+                ...group.categories.map((line) => (
+                  <tr key={line.id}>
+                    <td className="stats__sub">{line.name}</td>
+                    <td className="num muted">{formatNumber(line.portions)}</td>
+                  </tr>
+                )),
+              ]
+            })}
+            {summary.looseRecords > 0 && (
+              <tr>
+                <td>Без категории</td>
+                <td className="num">{formatNumber(summary.loose)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        {summary.assumed > 0 && (
+          <p className="muted">
+            В граммах без веса порции — посчитано по одной порции: {summary.assumed}{' '}
+            {plural(summary.assumed, FORMS.record)}.
+          </p>
+        )}
+      </div>
+    </Fold>
   )
 }
