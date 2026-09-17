@@ -25,7 +25,8 @@
  */
 
 import type { Snapshot } from './core/db.ts'
-import type { DateStr } from './core/dates.ts'
+import { formatDate, type DateStr, type Period } from './core/dates.ts'
+import type { FeedItem } from './core/feed.ts'
 import {
   buildPrompt,
   mergeResults,
@@ -43,6 +44,7 @@ import {
   importIntake,
   intakeImportSpec,
 } from './modules/food/import.ts'
+import { intakeFeed, intakeMarkdown } from './modules/food/feed.ts'
 
 /**
  * Все синхронизируемые хранилища, вместе с надгробиями. Надгробия нужны
@@ -56,6 +58,13 @@ type ImportEntry = { spec: ImportSpec; run: (raw: unknown, data: Data, ctx: Impo
 type KindEntry = {
   /** Подпись вида: чип ленты, заголовок раздела выгрузки. */
   label: string
+  /** Строки ленты, без порядка: порядок — дело `core/feed.ts`. */
+  feed: (data: Data, day: DateStr) => FeedItem[]
+  /**
+   * Раздел выгрузки без заголовка: заголовок — подпись вида. `period` — вид
+   * отбирает свои записи по своей дате; null — за всё время (Р-34).
+   */
+  markdown: (data: Data, day: DateStr, period: Period | null) => string
   /** Разделы импорта по порядку разбора. Пусто — вид не импортируется. */
   import: readonly ImportEntry[]
 }
@@ -63,6 +72,8 @@ type KindEntry = {
 export const KINDS: { readonly [K in RecordKind]: KindEntry } = {
   intake: {
     label: 'Еда',
+    feed: (data, day) => intakeFeed(data.intake, data.dishes, data.categories, day),
+    markdown: (data, _day, period) => intakeMarkdown(data.intake, data.dishes, period),
     import: [
       { spec: categoriesImportSpec, run: importCategories },
       { spec: dishesImportSpec, run: importDishes },
@@ -73,6 +84,42 @@ export const KINDS: { readonly [K in RecordKind]: KindEntry } = {
 
 /** Порядок видов на экране, в промпте и в выгрузке — порядок строк таблицы. */
 export const KIND_ORDER = Object.keys(KINDS) as RecordKind[]
+
+/** Все строки ленты, без порядка: порядок — дело `core/feed.ts`. */
+export function feedItems(data: Data, day: DateStr): FeedItem[] {
+  return KIND_ORDER.flatMap((kind) => KINDS[kind].feed(data, day))
+}
+
+/** Что выгружать: разделы и период с названием для шапки. Не задано — всё и за всё время (Р-34). */
+export type MarkdownChoice = {
+  kinds?: readonly RecordKind[]
+  span?: { period: Period; label: string } | null
+}
+
+/**
+ * Выгрузка в markdown одним файлом: раздел на вид записи, период — на выбор
+ * (Р-34; их Р-63, Р-79).
+ *
+ * Читать глазами, а не переносить: обратно файл не загружается, для
+ * переноса — копия в JSON из тех же «Настроек».
+ */
+export function markdownExport(data: Data, day: DateStr, choice: MarkdownChoice = {}): string {
+  const kinds = KIND_ORDER.filter((kind) => (choice.kinds ?? KIND_ORDER).includes(kind))
+  const span = choice.span ?? null
+  const head = [
+    '# Трапеза',
+    '',
+    `Выгрузка от ${formatDate(day)}. Для чтения: обратно в приложение этот файл не загружается,`,
+    'для переноса данных есть копия в JSON — «Настройки» → «Экспорт и импорт».',
+  ]
+  // Что выгружено — в шапке: выборка не прячет записи молча (Р-01).
+  if (kinds.length < KIND_ORDER.length) head.push('', `Разделы: ${kinds.map((kind) => KINDS[kind].label).join(', ')}.`)
+  if (span) head.push('', `Период: ${span.label}. Записи с неразобранной датой — только в выгрузке за всё время.`)
+  const sections = kinds.map(
+    (kind) => `## ${KINDS[kind].label}\n\n${KINDS[kind].markdown(data, day, span?.period ?? null)}`,
+  )
+  return `${[head.join('\n'), ...sections].join('\n\n')}\n`
+}
 
 /** Разделы импорта в порядке таблицы. */
 function importEntries(): ImportEntry[] {

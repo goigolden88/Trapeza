@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { IMPORT_FORMAT, IMPORT_VERSION, planTotal, type ImportPlan } from './core/importing.ts'
+import { monthPeriod } from './core/dates.ts'
 import { SYNCED_STORES } from './core/model.ts'
-import { importPrompt, KIND_ORDER, KINDS, planImport, type Data } from './registry.ts'
+import { feedItems, importPrompt, KIND_ORDER, KINDS, markdownExport, planImport, type Data } from './registry.ts'
 
 // По образцу теста реестра «Делу Время» с d86f0aa, у них — «Дневников»:
 // пример из промпта обязан проходить собственную проверку — описание
@@ -127,5 +128,41 @@ describe('реестр видов записей', () => {
 
   it('подписи видов не пустые', () => {
     for (const kind of KIND_ORDER) expect(KINDS[kind].label).not.toBe('')
+  })
+})
+
+describe('лента и markdown — Этап 5', () => {
+  function withMarch(): Data {
+    const data = empty()
+    data.dishes.push({ id: 'dish:каша', updatedAt: at, name: 'Каша' })
+    data.intake.push(
+      { id: 'a', updatedAt: at, date: '2026-03-02', meal: 'breakfast', dishId: 'dish:каша' },
+      { id: 'b', updatedAt: at, date: '2026-02-10', meal: 'lunch', dishId: 'dish:каша' },
+    )
+    return data
+  }
+
+  it('строки ленты — от всех видов, строка на день', () => {
+    expect(feedItems(withMarch(), '2026-09-17').map((item) => `${item.kind}:${item.id}`).sort()).toEqual([
+      'intake:day:2026-02-10',
+      'intake:day:2026-03-02',
+    ])
+  })
+
+  it('markdown: шапка «Трапезы», раздел на вид; период назван в шапке и отбирает дни', () => {
+    const all = markdownExport(withMarch(), '2026-09-17')
+    expect(all.startsWith('# Трапеза\n\nВыгрузка от 17.09.2026.')).toBe(true)
+    expect(all).toContain('## Еда\n\n### Февраль 2026')
+    expect(all).toContain('### Март 2026')
+    expect(all).not.toContain('Период:')
+    expect(all).not.toContain('Разделы:')
+    expect(all.endsWith('\n')).toBe(true)
+
+    const march = markdownExport(withMarch(), '2026-09-17', {
+      span: { period: monthPeriod('2026-03'), label: 'март 2026' },
+    })
+    expect(march).toContain('Период: март 2026.')
+    expect(march).toContain('### Март 2026')
+    expect(march).not.toContain('Февраль')
   })
 })
