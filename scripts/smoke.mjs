@@ -933,7 +933,46 @@ async function scenario() {
   await weekScenario()
   await feedScenario()
   await markdownScenario()
+  await helpScenario()
   await repeatScenario()
+}
+
+/** Значение числовой константы из исходника: справка обязана сказать ровно его. */
+function constant(file, name) {
+  const found = new RegExp(`export const ${name}(?::[^=]+)? = (.+)`).exec(readFileSync(join(ROOT, file), 'utf8'))
+  if (!found) throw new Error(`Константы ${name} нет в ${file}`)
+  return found[1].trim()
+}
+
+/**
+ * Справка (Этап 5): «?» в шапке «Сегодня», вопросы свёрнуты, ответы
+ * называют числа тех констант, по которым работает код.
+ */
+async function helpScenario() {
+  await go('/')
+  await act(`document.querySelector('.screen-head__tools a[aria-label="Справка"]')?.click()`)
+  await sleep(900)
+  const hash = await run('location.hash')
+  const folded = await run(`[...document.querySelectorAll('.fold__btn')].every((el) => el.getAttribute('aria-expanded') === 'false')`)
+  const questions = await run(`document.querySelectorAll('.fold__btn').length`)
+  await unfoldAll()
+  const text = (await screen()).replace(/ /g, ' ')
+  const hours = /\{ lunch: (\d+), dinner: (\d+) \}/.exec(constant('src/modules/food/meals.ts', 'DEFAULT_MEAL_HOURS'))
+  const windowHours = /\{ from: (\d+), to: (\d+) \}/.exec(constant('src/notify.ts', 'DEFAULT_WINDOW'))
+  const expected = [
+    `завтрак до ${hours?.[1].padStart(2, '0')}:00, обед до ${hours?.[2].padStart(2, '0')}:00`,
+    `до ${constant('src/modules/food/picker.ts', 'FREQUENT_MAX')} блюд`,
+    `последних ${constant('src/modules/food/usual.ts', 'USUAL_MEALS')} таких приёмов`,
+    `с ${constant('src/modules/food/norms.ts', 'NORM_MIN_WEEKS')} недель в счёт`,
+    `последние ${constant('src/modules/food/norms.ts', 'NORM_BARS_WEEKS')} недель в счёт`,
+    `с ${windowHours?.[1]} до ${windowHours?.[2]} по часам устройства`,
+  ]
+  const missing = expected.filter((part) => !text.includes(part))
+  check(
+    'справка — «?» в шапке «Сегодня», вопросы свёрнуты; числа — из констант кода',
+    hash === '#/help' && folded === true && questions > 0 && missing.length === 0,
+    `${hash}; вопросов ${questions}; нет: ${JSON.stringify(missing)}`,
+  )
 }
 
 /**
@@ -1679,7 +1718,7 @@ async function dataScenario(file) {
   check('копия загрузилась через «Восстановить из копии»', loaded !== null, loaded?.[0] ?? restored.slice(0, 160))
 
   // Маршруты прибавляются вместе с экранами, по этапам.
-  const routes = ['/', '/dishes', '/settings', '/week', '/week?w=2026-03-09', '/?day=2026-03-10', '/feed']
+  const routes = ['/', '/dishes', '/settings', '/week', '/week?w=2026-03-09', '/?day=2026-03-10', '/feed', '/help']
 
   for (const route of routes) {
     await go(route)

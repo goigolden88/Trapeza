@@ -44,6 +44,21 @@ export function portions(value: number): string {
   return `${formatNumber(value)} ${plural(value, FORMS.portion)}`
 }
 
+/** Час на часах: `13` → `13:00`. Для справки — граница приёма из константы. */
+export function hourText(hour: number): string {
+  return `${String(hour).padStart(2, '0')}:00`
+}
+
+/** Доля словами: `0.5` — «половине», иначе процентом: `0.4` — «40 %». После «в». */
+export function shareText(share: number): string {
+  return share === 0.5 ? 'половине' : `${Math.round(share * 100)} %`
+}
+
+/** `1` — «месяц», `2` — «2 месяца», `5` — «5 месяцев». После «за». */
+export function monthsText(count: number): string {
+  return count === 1 ? 'месяц' : `${count} ${plural(count, ['месяц', 'месяца', 'месяцев'])}`
+}
+
 /** Дни недели с понедельника — подписи недели. */
 export const WEEKDAYS_SHORT = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'] as const
 

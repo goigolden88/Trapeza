@@ -99,6 +99,10 @@ export function Today() {
             <Link className="gear" to="/feed" aria-label="Лента и поиск">
               <span aria-hidden="true">⌕</span>
             </Link>
+            {/* Справка нужна, когда что-то непонятно, — а это случается здесь. */}
+            <Link className="gear" to="/help" aria-label="Справка">
+              <span aria-hidden="true">?</span>
+            </Link>
             <Link className="gear" to="/settings" aria-label="Настройки">
               <span aria-hidden="true">⚙</span>
               {/* Синхронизация живёт в фоне: точка зовёт в «Настройки». */}

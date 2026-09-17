@@ -5,6 +5,7 @@ import { watchMerges } from './modules/food/useFood.ts'
 import { Layout } from './ui/Layout.tsx'
 import { Dishes } from './screens/Dishes.tsx'
 import { Feed } from './screens/Feed.tsx'
+import { Help } from './screens/Help.tsx'
 import { Today } from './screens/Today.tsx'
 import { Settings } from './screens/Settings.tsx'
 import { Week } from './screens/Week.tsx'
@@ -37,6 +38,8 @@ export function App() {
           <Route path="settings" element={<Settings />} />
           {/* Лента: не вкладка — вход ⌕ в шапке «Сегодня» (Р-33). */}
           <Route path="feed" element={<Feed />} />
+          {/* Справка: вход — «?» в шапке «Сегодня». */}
+          <Route path="help" element={<Help />} />
           {/* Незнакомый адрес — на главный. Так и ярлык на экран, которого
               ещё нет, открывает приложение, а не пустоту. */}
           <Route path="*" element={<Navigate to="/" replace />} />
