@@ -99,7 +99,7 @@ export function createCategory(
 }
 
 /** Свойства блюда, кроме названия. */
-export type DishFields = Pick<Dish, 'categoryId' | 'portionGrams' | 'kcal100' | 'kcalPortion'>
+export type DishFields = Pick<Dish, 'categoryId' | 'portionGrams' | 'kcal100' | 'kcalPortion' | 'recipe'>
 
 /** Новое блюдо. Название проверено `nameProblem`; на месте надгробия оживает. */
 export function createDish(dishes: readonly Dish[], name: string, suffix: string, fields: DishFields = {}): Dish {
@@ -108,6 +108,7 @@ export function createDish(dishes: readonly Dish[], name: string, suffix: string
   if (fields.portionGrams !== undefined) dish.portionGrams = fields.portionGrams
   if (fields.kcal100 !== undefined) dish.kcal100 = fields.kcal100
   if (fields.kcalPortion !== undefined) dish.kcalPortion = fields.kcalPortion
+  if (fields.recipe !== undefined) dish.recipe = fields.recipe
   return dish
 }
 

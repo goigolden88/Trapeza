@@ -11,6 +11,7 @@ import type { Category, Dish, Intake, Meal } from '../../core/model.ts'
 import { timeOf } from './import.ts'
 import { portions as portionsText } from './labels.ts'
 import { cleanName, nameProblem, type NameProblem } from './names.ts'
+import { cleanRecipe } from './recipe.ts'
 
 /** Поля формы блюда — как их видит человек: строками. */
 export type DishInput = {
@@ -20,6 +21,8 @@ export type DishInput = {
   portionGrams: string
   kcal100: string
   kcalPortion: string
+  /** рецепт текстом (Р-39); '' — рецепта нет */
+  recipe: string
 }
 
 export function dishInput(dish?: Dish): DishInput {
@@ -30,6 +33,7 @@ export function dishInput(dish?: Dish): DishInput {
     portionGrams: text(dish?.portionGrams),
     kcal100: text(dish?.kcal100),
     kcalPortion: text(dish?.kcalPortion),
+    recipe: dish?.recipe ?? '',
   }
 }
 
@@ -50,6 +54,7 @@ export type DishChanges = {
   portionGrams: number | undefined
   kcal100: number | undefined
   kcalPortion: number | undefined
+  recipe: string | undefined
 }
 
 /**
@@ -92,6 +97,7 @@ export function readDish(
       portionGrams: read.portionGrams,
       kcal100: read.kcal100,
       kcalPortion: read.kcalPortion,
+      recipe: cleanRecipe(input.recipe),
     },
   }
 }
@@ -99,7 +105,7 @@ export function readDish(
 /** Блюдо с правками формы. Снятые поля уходят из записи, а не остаются `undefined`. */
 export function applyDish(dish: Dish, changes: DishChanges): Dish {
   const next: Dish = { ...dish, name: changes.name }
-  for (const key of ['categoryId', 'portionGrams', 'kcal100', 'kcalPortion'] as const) {
+  for (const key of ['categoryId', 'portionGrams', 'kcal100', 'kcalPortion', 'recipe'] as const) {
     const value = changes[key]
     if (value === undefined) delete next[key]
     else (next as Record<typeof key, unknown>)[key] = value

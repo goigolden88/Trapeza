@@ -22,6 +22,7 @@ import {
 import { applyDish, dishFacts, dishInput, nameProblemText, readDish, type DishInput } from '../modules/food/forms.ts'
 import { FORMS, MEAL_NAMES, MEALS } from '../modules/food/labels.ts'
 import { cleanName, nameProblem, normName } from '../modules/food/names.ts'
+import { RECIPE_TEMPLATE, recipePrompt } from '../modules/food/recipe.ts'
 import {
   checkTemplateName,
   kindOf,
@@ -234,7 +235,7 @@ function NewDish({ data, save }: { data: Data; save: Save }) {
           void submit()
         }}
       >
-        <DishFields input={input} categories={data.categories} onChange={setInput} />
+        <DishFields input={input} categories={data.categories} onChange={setInput} where="new" />
         {problem && <p className="error">{problem}</p>}
         <div className="form__actions">
           <button type="submit" className="btn btn--primary" disabled={!input.name.trim()}>
@@ -254,10 +255,13 @@ function DishFields({
   input,
   categories,
   onChange,
+  where,
 }: {
   input: DishInput
   categories: Category[]
   onChange: (input: DishInput) => void
+  /** Новое блюдо или правка: у их блоков «Рецепт» своя свёрнутость. */
+  where: 'new' | 'edit'
 }) {
   const number = (key: 'portionGrams' | 'kcal100' | 'kcalPortion', label: string) => (
     <label className="field">
@@ -285,7 +289,64 @@ function DishFields({
       {number('portionGrams', 'Порция, г')}
       {number('kcal100', 'Ккал на 100 г')}
       {number('kcalPortion', 'Ккал на порцию — если граммы не подходят')}
+      <RecipeField input={input} onChange={onChange} where={where} />
     </>
+  )
+}
+
+/**
+ * Рецепт — текст по заготовке (Р-39). Своего экрана у него нет: он часть
+ * блюда и правится там же, где порция и калорийность (Р-36). Пустое поле
+ * заполняется заготовкой по кнопке, рядом — промпт для ИИ; калорийность
+ * из рецепта не считается, оценку из ответа переносят в поле выше руками.
+ */
+function RecipeField({
+  input,
+  onChange,
+  where,
+}: {
+  input: DishInput
+  onChange: (input: DishInput) => void
+  where: 'new' | 'edit'
+}) {
+  const [copied, setCopied] = useState('')
+  const prompt = recipePrompt(input.name)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(prompt)
+      setCopied('Промпт скопирован — вставь его в чат с ИИ; ответ вставь в поле выше.')
+    } catch {
+      setCopied('Скопировать не вышло — открой промпт ниже и выдели его вручную.')
+    }
+  }
+
+  return (
+    <Fold id={`dishes:${where}:recipe`} title="Рецепт" sub folded>
+      <label className="field">
+        <span>Как готовить — свободным текстом</span>
+        <textarea
+          name="dish-recipe"
+          rows={10}
+          value={input.recipe}
+          onChange={(event) => onChange({ ...input, recipe: event.target.value })}
+        />
+      </label>
+      <div className="form__actions">
+        {!input.recipe.trim() && (
+          <button type="button" className="btn" onClick={() => onChange({ ...input, recipe: RECIPE_TEMPLATE })}>
+            Заготовка
+          </button>
+        )}
+        <button type="button" className="btn" onClick={() => void copy()}>
+          Скопировать промпт
+        </button>
+      </div>
+      {copied && <p className="muted">{copied}</p>}
+      <Fold id={`dishes:${where}:recipe:prompt`} title="Показать промпт" sub folded>
+        <pre className="prompt">{prompt}</pre>
+      </Fold>
+    </Fold>
   )
 }
 
@@ -327,6 +388,8 @@ function DishRow({
         <button type="button" className="plain-btn cat__name" aria-expanded={open} onClick={onToggle}>
           {dish.name}
           {facts ? <span className="muted"> · {facts}</span> : <span className="muted"> · ккал не известны</span>}
+          {/* Рецепт виден по списку, а не только внутри формы (Р-39). */}
+          {dish.recipe && <span className="muted"> · рецепт</span>}
         </button>
       </div>
       {open && <DishEditor dish={dish} data={data} save={save} onDone={onToggle} />}
@@ -358,7 +421,7 @@ function DishEditor({ dish, data, save, onDone }: { dish: Dish; data: Data; save
           void submit()
         }}
       >
-        <DishFields input={input} categories={data.categories} onChange={setInput} />
+        <DishFields input={input} categories={data.categories} onChange={setInput} where="edit" />
         {problem && <p className="error">{problem}</p>}
         <div className="form__actions">
           <button type="button" className="btn" onClick={() => void save(() => db.put('dishes', { ...dish, archived: true }))}>

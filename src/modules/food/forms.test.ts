@@ -10,6 +10,7 @@ import {
   readIntake,
   stepPortions,
 } from './forms.ts'
+import { RECIPE_TEMPLATE } from './recipe.ts'
 
 const at = '2026-09-16T10:00:00.000Z'
 const soups: Category = { id: 'cat:супы', updatedAt: at, name: 'Супы', order: 0 }
@@ -25,18 +26,26 @@ describe('форма блюда', () => {
       portionGrams: '300',
       kcal100: '49,5',
       kcalPortion: '',
+      recipe: '',
     })
     expect(dishInput().name).toBe('')
   })
 
   it('разбор: запятая, пробелы, пустое поле снимает свойство', () => {
     const read = readDish(
-      { name: '  Щи  ', categoryId: 'cat:супы', portionGrams: ' 350 ', kcal100: '32,5', kcalPortion: '' },
+      { name: '  Щи  ', categoryId: 'cat:супы', portionGrams: ' 350 ', kcal100: '32,5', kcalPortion: '', recipe: '' },
       [borsch],
       [soups],
     )
     expect(read).toEqual({
-      changes: { name: 'Щи', categoryId: 'cat:супы', portionGrams: 350, kcal100: 32.5, kcalPortion: undefined },
+      changes: {
+        name: 'Щи',
+        categoryId: 'cat:супы',
+        portionGrams: 350,
+        kcal100: 32.5,
+        kcalPortion: undefined,
+        recipe: undefined,
+      },
     })
   })
 
@@ -67,9 +76,22 @@ describe('форма блюда', () => {
       portionGrams: 250,
       kcal100: undefined,
       kcalPortion: 60,
+      recipe: undefined,
     })
     expect(next).toEqual({ id: 'dish:борщ', updatedAt: at, name: 'Борщ красный', portionGrams: 250, kcalPortion: 60 })
     expect(Object.keys(next)).not.toContain('categoryId')
+  })
+
+  it('рецепт: написанное сохраняется, пустая заготовка — нет — Р-39', () => {
+    const input = { ...dishInput(), name: 'Борщ' }
+    const written = readDish({ ...input, recipe: `${RECIPE_TEMPLATE.replace('Порций:', 'Порций: 6')}` }, [], [])
+    expect(written).toHaveProperty('changes.recipe', expect.stringContaining('Порций: 6'))
+    expect(readDish({ ...input, recipe: RECIPE_TEMPLATE }, [], [])).toHaveProperty('changes.recipe', undefined)
+    const cleared = applyDish(
+      { ...borsch, recipe: 'Порций: 6' },
+      { name: 'Борщ', categoryId: undefined, portionGrams: undefined, kcal100: undefined, kcalPortion: undefined, recipe: undefined },
+    )
+    expect(Object.keys(cleared)).not.toContain('recipe')
   })
 
   it('строка свойств', () => {

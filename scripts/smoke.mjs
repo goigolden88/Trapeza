@@ -802,6 +802,58 @@ async function scenario() {
     line(withShchi, 'Щи'),
   )
 
+  // ─ Рецепт блюда (Р-39): заготовка по кнопке, текст сохраняется у блюда,
+  // в списке — пометка, промпт называет блюдо. Ккал из рецепта не считаются.
+  // Всё — внутри открытой формы блюда: такой же блок есть у «Нового блюда».
+  const row = `document.querySelector('.cat__body')`
+  await act(`startsWith('.cat__name', 'Щи')?.click()`)
+  await sleep(500)
+  await act(`
+    const fold = [...document.querySelectorAll('.cat__body .fold__btn')].find((el) => el.textContent.trim() === 'Рецепт')
+    if (fold?.getAttribute('aria-expanded') === 'false') fold.click()
+  `)
+  await sleep(400)
+  await act(`[...document.querySelectorAll('.cat__body button')].find((el) => el.textContent.trim() === 'Заготовка')?.click()`)
+  await sleep(300)
+  const template = await run(`${row}?.querySelector('[name="dish-recipe"]')?.value ?? ''`)
+  const recipeText = [
+    'Порций: 6',
+    'Время: 40 минут',
+    '',
+    'Ингредиенты',
+    '- Капуста 300 г',
+    '',
+    'Как готовить',
+    '1. Варить',
+    '',
+    'Заметки',
+  ].join('\n')
+  await act(`set(document.querySelector('.cat__body [name="dish-recipe"]'), ${JSON.stringify(recipeText)})`)
+  await act(`
+    const fold = [...document.querySelectorAll('.cat__body .fold__btn')].find((el) => el.textContent.trim() === 'Показать промпт')
+    if (fold?.getAttribute('aria-expanded') === 'false') fold.click()
+  `)
+  await sleep(400)
+  const promptText = await run(`${row}?.querySelector('.prompt')?.innerText ?? ''`)
+  await act(`[...document.querySelectorAll('.cat__body button')].find((el) => el.textContent.trim() === 'Сохранить')?.click()`)
+  await sleep(800)
+  await act(`startsWith('.cat__name', 'Щи')?.click()`)
+  await sleep(500)
+  const savedRecipe = await run(`${row}?.querySelector('[name="dish-recipe"]')?.value ?? ''`)
+  await act(`startsWith('.cat__name', 'Щи')?.click()`)
+  await sleep(400)
+  const withRecipe = await screen()
+  check(
+    'рецепт блюда: заготовка кнопкой, текст сохраняется, в списке пометка, промпт зовёт блюдо по имени — Р-39',
+    template.startsWith('Порций:') &&
+      ['Ингредиенты', 'Как готовить', 'Заметки'].every((part) => template.includes(part)) &&
+      savedRecipe === recipeText &&
+      has(withRecipe, 'Щи · порция 350 г · 32,5 ккал/100 г · рецепт') &&
+      promptText.includes('«Щи»') &&
+      promptText.includes('≈ N ккал на 100 г'),
+    `заготовка ${JSON.stringify(template.slice(0, 20))}; сохранено ${savedRecipe === recipeText}; ${line(withRecipe, 'Щи ·')}; промпт ${JSON.stringify(promptText.slice(0, 60))}`,
+  )
+
   // ─ Слияние одноимённых (Р-12): «БОРЩ» с другого устройства, пришедший
   // копией, сливается с «Борщом» сам — содержимое от поздней правки.
   await go('/settings')
@@ -1020,6 +1072,11 @@ async function helpScenario() {
     'справка — «?» в шапке «Сегодня», вопросы свёрнуты; числа — из констант кода',
     hash === '#/help' && folded === true && questions > 0 && missing.length === 0,
     `${hash}; вопросов ${questions}; нет: ${JSON.stringify(missing)}`,
+  )
+  check(
+    'в справке есть вопрос о рецепте и сказано, что ккал из него не считаются — Р-39',
+    has(text, 'Рецепт блюда') && has(text, 'калорийность из рецепта не считает'),
+    line(text, 'Рецепт блюда'),
   )
 
   // ─ «Что нового»: копия, обновившаяся с версии без окна, — ключа нет, база
