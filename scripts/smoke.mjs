@@ -1861,6 +1861,34 @@ async function dataScenario(file) {
     `${foundLine?.[0] ?? 'нет строки'}; заголовков ${foundHeads}`,
   )
 
+  // ─ Новое блюдо из поиска (Р-36): ничего не нашлось — «Завести и записать»;
+  // блюдо встаёт без категории, запись — в приём. Нашлось — кнопки нет.
+  await act(`set(${breakfastPick}.querySelector('.search'), 'Пицца прогона')`)
+  await sleep(500)
+  const offerLabel = await run(`${breakfastPick}.querySelector('.pick__new')?.textContent.trim() ?? ''`)
+  await act(`${breakfastPick}.querySelector('.pick__new')?.click()`)
+  await sleep(900)
+  const afterNew = await screen()
+  const recordedNew = await run(`[...document.querySelectorAll('.meal')]
+    .find((el) => el.querySelector('.fold__btn')?.textContent.trim() === 'Завтрак')
+    ?.querySelector('[aria-label="Поправить: Пицца прогона"]') != null`)
+  await act(`set(${breakfastPick}.querySelector('.search'), 'пицца прог')`)
+  await sleep(500)
+  const offerFound = await run(`${breakfastPick}.querySelector('.pick__new') === null`)
+  await act(`set(${breakfastPick}.querySelector('.search'), '')`)
+  await go('/dishes')
+  await unfold('Без категории')
+  const looseDishes = await screen()
+  check(
+    'новое блюдо из поиска: «Завести и записать» — запись в приёме, блюдо без категории; нашлось — кнопки нет — Р-36',
+    offerLabel === 'Завести «Пицца прогона» и записать' &&
+      recordedNew === true &&
+      has(afterNew, 'Завтрак: Пицца прогона — новое блюдо без категории') &&
+      offerFound === true &&
+      has(looseDishes, 'Пицца прогона'),
+    `«${offerLabel}»; записано ${recordedNew}; ${line(afterNew, 'Пицца прогона')}; найдено без кнопки ${offerFound}`,
+  )
+
   // ─ Лента на настоящих данных: строк — столько, сколько дней с живыми
   // записями; «март» находит мартовские дни и называет, из скольких.
   const liveDays = new Set((copy.data?.intake ?? []).filter((each) => !each.deleted).map((each) => each.date)).size

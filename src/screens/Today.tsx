@@ -4,7 +4,7 @@ import { db } from '../core/db.ts'
 import { addDays, formatDate, formatDateLong, formatPeriod, nowIso, plural, weekPeriod, type DateStr } from '../core/dates.ts'
 import { ulid } from '../core/id.ts'
 import type { Category, Dish, Intake, Meal, Norm, Template } from '../core/model.ts'
-import { activeDishes } from '../modules/food/catalog.ts'
+import { activeDishes, createDish } from '../modules/food/catalog.ts'
 import { dayMeals, tapDish, viewedDay } from '../modules/food/day.ts'
 import { amountText, intakeInput, readIntake, stepPortions, type IntakeInput } from '../modules/food/forms.ts'
 import { kcalText } from '../modules/food/kcal.ts'
@@ -12,7 +12,7 @@ import { FORMS, formatNumber, MEAL_NAMES, MEALS, normCheckText, portions, touchT
 import { currentMeal, DEFAULT_MEAL_HOURS, MEAL_HOURS_KEY, readMealHours, startedMeals, type MealHours } from '../modules/food/meals.ts'
 import { normName } from '../modules/food/names.ts'
 import { activeNorms, checkWeek, indexDays, touchedNorms } from '../modules/food/norms.ts'
-import { frequentDishes, pickSections, searchSections, sectionsSize } from '../modules/food/picker.ts'
+import { frequentDishes, newDishOffer, pickSections, searchSections, sectionsSize } from '../modules/food/picker.ts'
 import { previousMeal, repeatItems } from '../modules/food/repeat.ts'
 import { summarize, type CategoryLine } from '../modules/food/summary.ts'
 import {
@@ -869,6 +869,25 @@ function DishPicker({
     }
   }
 
+  // Поиск не нашёл ничего — блюдо заводится отсюда и сразу записывается (Р-36).
+  const offer = newDishOffer(query, [...dishes.values()], sectionsSize(found))
+
+  async function addAndTap() {
+    if (offer === null) return
+    const dish =
+      offer.kind === 'restore' ? { ...offer.dish, archived: false } : createDish([...dishes.values()], offer.name, ulid())
+    const record: Intake = { id: ulid(), updatedAt: nowIso(), date: day, meal, dishId: dish.id }
+    const done = await save(async () => {
+      await db.put('dishes', dish)
+      await db.put('intake', record)
+    })
+    if (!done) return
+    setQuery('')
+    onNote(
+      `${MEAL_NAMES[meal]}: ${dish.name} — ${offer.kind === 'restore' ? 'возвращено из архива' : 'новое блюдо без категории; категория, порция и калории — на «Блюдах»'}`,
+    )
+  }
+
   return (
     <div className="meal__pick">
       {live.length >= SEARCH_FROM && (
@@ -887,6 +906,13 @@ function DishPicker({
           <p className="muted">
             Найдено {sectionsSize(found)} из {live.length}
           </p>
+          {offer && (
+            <button type="button" className="btn pick__new" onClick={() => void addAndTap()}>
+              {offer.kind === 'restore'
+                ? `Вернуть «${offer.dish.name}» из архива и записать`
+                : `Завести «${offer.name}» и записать`}
+            </button>
+          )}
           {found.map((section) => (
             <div key={section.id ?? 'loose'} className="pick__found">
               <h3 className="pick__label">{section.name}</h3>

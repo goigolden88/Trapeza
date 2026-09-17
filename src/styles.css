@@ -1322,6 +1322,14 @@ span.plan-item__text {
   font-weight: 600;
 }
 
+/* «Завести и записать» (Р-36): под «Найдено 0 из N», название запроса
+   переносится, а не режется. */
+.pick__new {
+  margin: 0 0 8px;
+  text-align: left;
+  white-space: normal;
+}
+
 .pick__frequent {
   margin-bottom: 8px;
 }

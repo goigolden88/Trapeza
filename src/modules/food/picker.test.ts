@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Category, Dish, Intake } from '../../core/model.ts'
-import { FREQUENT_MAX, frequentDishes, LOOSE_NAME, pickSections, searchSections, sectionsSize } from './picker.ts'
+import { FREQUENT_MAX, frequentDishes, LOOSE_NAME, newDishOffer, pickSections, searchSections, sectionsSize } from './picker.ts'
 
 const at = '2026-09-16T10:00:00.000Z'
 
@@ -90,5 +90,24 @@ describe('разделы по категориям — Р-26', () => {
     expect(searchSections(sections, 'щ').map((section) => section.name)).toEqual(['Супы'])
     expect(searchSections(sections, '')).toEqual(sections)
     expect(searchSections(sections, 'нет такого')).toEqual([])
+  })
+})
+
+describe('новое блюдо из поиска — Р-36', () => {
+  const pizza = { ...dish('Пицца'), archived: true }
+  const gone = { ...dish('Шаурма'), deleted: true }
+
+  it('поиск пуст — завести с названием запроса без лишних пробелов', () => {
+    expect(newDishOffer('  пицца   с грибами ', [dish('Борщ')], 0)).toEqual({ kind: 'create', name: 'пицца с грибами' })
+  })
+
+  it('нашлось хоть одно или запрос пуст — ничего', () => {
+    expect(newDishOffer('бор', [dish('Борщ')], 1)).toBeNull()
+    expect(newDishOffer('   ', [dish('Борщ')], 0)).toBeNull()
+  })
+
+  it('то же название в архиве — вернуть его, регистр и «ё» не в счёт; надгробие — заводится заново', () => {
+    expect(newDishOffer('ПИЦЦА', [pizza], 0)).toEqual({ kind: 'restore', dish: pizza })
+    expect(newDishOffer('шаурма', [gone], 0)).toEqual({ kind: 'create', name: 'шаурма' })
   })
 })

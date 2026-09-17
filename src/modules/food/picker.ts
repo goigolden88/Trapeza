@@ -8,7 +8,7 @@
 import type { DateStr } from '../../core/dates.ts'
 import type { Category, Dish, Intake, Meal } from '../../core/model.ts'
 import { sortCategories } from './catalog.ts'
-import { normName } from './names.ts'
+import { cleanName, findByName, normName } from './names.ts'
 import { byFrequency, mealFrequency } from './repeat.ts'
 
 /** Сколько блюд в «Частых» — два ряда кнопок на телефоне. */
@@ -70,6 +70,22 @@ export function searchSections(sections: readonly PickSection[], query: string):
   return sections
     .map((section) => ({ ...section, dishes: section.dishes.filter((dish) => normName(dish.name).includes(key)) }))
     .filter((section) => section.dishes.length > 0)
+}
+
+/**
+ * Новое блюдо из поиска (Р-36): поиск не нашёл ни одного живого блюда —
+ * завести блюдо с названием запроса и записать. Блюдо с таким названием
+ * лежит в архиве — вернуть его, а не заводить второе (Р-12). Нашлось хоть
+ * одно или запрос пуст — ничего.
+ */
+export type NewDishOffer = { kind: 'create'; name: string } | { kind: 'restore'; dish: Dish } | null
+
+export function newDishOffer(query: string, dishes: readonly Dish[], found: number): NewDishOffer {
+  const name = cleanName(query)
+  if (!name || found > 0) return null
+  const archived = findByName(dishes, name)
+  if (archived?.archived) return { kind: 'restore', dish: archived }
+  return archived ? null : { kind: 'create', name }
 }
 
 /** Сколько блюд в разделах. */
