@@ -595,8 +595,17 @@ async function scenario() {
   const start = await screen()
   check(
     '«Сегодня» открылось; пустая база ведёт к блюдам и импорту',
-    has(start, 'Сегодня') && has(start, 'блюд нет') && has(start, 'Импорт записей'),
+    has(start, 'Сегодня') && /(?:^|\n)Пока блюд нет\.(?:\n|$)/.test(start) && has(start, 'Импорт записей'),
     start.replace(/\s+/g, ' ').slice(0, 120),
+  )
+  // Р-37: поиск в приёме — и без единого блюда: им заводится первое.
+  const emptyPick = await run(`[...document.querySelectorAll('.meal')]
+    .filter((el) => el.querySelector('.meal__pick .search'))
+    .map((el) => el.querySelector('.fold__btn').textContent.trim())`)
+  check(
+    'на пустой базе приёмы на месте, в открытом — поиск — Р-37',
+    emptyPick?.length === 1 && (await run(`document.querySelectorAll('.meal').length`)) === 4,
+    JSON.stringify(emptyPick),
   )
   check(
     'на пустой базе — приветствие «Трапезы» с установкой и справкой; «Что нового» свежей установке не показано',
@@ -841,6 +850,20 @@ async function scenario() {
     'выбор блюда: категории по порядку и свёрнуты, без категории — последней — Р-26',
     JSON.stringify(pickFolds) === JSON.stringify(['Супы false', 'Напитки false', 'Без категории false']) && shchiShown === false,
     `${JSON.stringify(pickFolds)}; Щи ${shchiShown ? 'на виду' : 'в категории'}`,
+  )
+  // Р-37: блюд три — поиск всё равно над списком, и ненайденное предлагает
+  // «Завести и записать». Не нажимается: счёт записей ниже на это не рассчитан.
+  const pickSearch = `document.querySelector('.meal__pick .search')`
+  await act(`${pickSearch} && set(${pickSearch}, 'Пицца прогона')`)
+  await sleep(500)
+  const fewOffer = await run(`document.querySelector('.meal__pick .pick__new')?.textContent.trim() ?? ''`)
+  const fewFound = /(?:^|\n)(Найдено \d+ из \d+)(?:\n|$)/.exec(await screen())?.[1] ?? ''
+  await act(`${pickSearch} && set(${pickSearch}, '')`)
+  await sleep(400)
+  check(
+    'поиск в приёме при трёх блюдах: ненайденное — «Завести и записать» — Р-37',
+    fewOffer === 'Завести «Пицца прогона» и записать' && fewFound === 'Найдено 0 из 3',
+    `«${fewOffer}»; ${fewFound || 'нет строки «Найдено»'}`,
   )
   await unfold('Супы')
   const soups = await run(`[...document.querySelectorAll('.meal__pick .fold__btn')].find((el) => el.textContent.trim() === 'Супы')

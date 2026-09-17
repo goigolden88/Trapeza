@@ -62,9 +62,6 @@ type Save = (action: () => Promise<unknown>) => Promise<boolean>
 /** Как часто сверять текущий приём с часами: границы — целые часы. */
 const CLOCK_MS = 60_000
 
-/** С какого числа блюд над списком встаёт поиск. */
-const SEARCH_FROM = 12
-
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : 'Неизвестная ошибка'
 }
@@ -206,20 +203,22 @@ function Day({ day, today, data, hours }: { day: DateStr; today: DateStr; data: 
   const dayRecords = Object.values(meals).flat()
   const live = activeDishes(data.dishes)
 
-  if (live.length === 0 && Object.values(meals).every((records) => records.length === 0)) {
-    return (
-      <section className="stub block">
-        <p>Записывать пока нечего: блюд нет.</p>
-        <p className="muted">
-          Заведите их на вкладке <Link to="/dishes">«Блюда»</Link> или загрузите списком —{' '}
-          <Link to="/settings">«Настройки»</Link> → «Экспорт и импорт» → «Импорт записей».
-        </p>
-      </section>
-    )
-  }
+  // Пустой справочник — подсказка над приёмами, а не вместо них: первое блюдо
+  // заводится и поиском приёма (Р-37).
+  const empty = live.length === 0 && dayRecords.length === 0
 
   return (
     <>
+      {empty && (
+        <section className="stub block">
+          <p>Пока блюд нет.</p>
+          <p className="muted">
+            Наберите название в поиске приёма — блюдо заведётся и запишется. Списком —{' '}
+            <Link to="/settings">«Настройки»</Link> → «Экспорт и импорт» → «Импорт записей»; справочник — на вкладке{' '}
+            <Link to="/dishes">«Блюда»</Link>.
+          </p>
+        </section>
+      )}
       {error && <p className="error">{error}</p>}
       {note && (
         <p className="muted" role="status">
@@ -890,17 +889,16 @@ function DishPicker({
 
   return (
     <div className="meal__pick">
-      {live.length >= SEARCH_FROM && (
-        <input
-          className="search"
-          type="search"
-          name={`pick-${meal}`}
-          placeholder="Найти блюдо"
-          aria-label={`Найти блюдо для приёма «${MEAL_NAMES[meal]}»`}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      )}
+      {/* Поиск — при любом числе блюд: он же вход «Завести и записать» (Р-37). */}
+      <input
+        className="search"
+        type="search"
+        name={`pick-${meal}`}
+        placeholder="Найти блюдо"
+        aria-label={`Найти блюдо для приёма «${MEAL_NAMES[meal]}»`}
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
       {key ? (
         <>
           <p className="muted">
