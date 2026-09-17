@@ -1289,6 +1289,49 @@ async function repeatScenario() {
     JSON.stringify(usualRows),
   )
 
+  // Сворачивание (Р-31, Р-32): развёрнут по умолчанию, у заголовка — сколько
+  // приёмов ждут; свёрнутый прячет строки и остаётся свёрнутым после
+  // перезагрузки; ключ — с сегодняшней датой, назавтра блок развёрнут.
+  const usualHead = `[...document.querySelectorAll('.fold__btn')].find((el) => el.textContent.trim() === 'Как обычно?')`
+  const usualState = () => run(`(() => {
+    const button = ${usualHead}
+    return {
+      expanded: button?.getAttribute('aria-expanded'),
+      summary: button?.parentElement.querySelector('.fold__summary')?.textContent.trim(),
+      rows: document.querySelectorAll('.usual__row').length,
+    }
+  })()`)
+  const openUsual = await usualState()
+  await act(`${usualHead}?.click()`)
+  await sleep(500)
+  await open(APP)
+  const foldedUsual = await usualState()
+  const foldKeys = await run(`new Promise((done) => {
+    const request = indexedDB.open('trapeza')
+    request.onsuccess = () => {
+      const get = request.result.transaction('settings').objectStore('settings').get('folds')
+      get.onsuccess = () => { const value = get.result; request.result.close(); done(Object.keys((value && value.value) || value || {}).filter((key) => key.startsWith('today:usual'))) }
+    }
+  })`)
+  const todayKey = await run(`(() => {
+    const d = new Date(); const pad = (n) => String(n).padStart(2, '0')
+    return 'today:usual:' + d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+  })()`)
+  const waiting = (count) => `· ${count} ${count % 10 === 1 && count % 100 !== 11 ? 'приём' : [2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100) ? 'приёма' : 'приёмов'}`
+  check(
+    '«Как обычно?» развёрнут, у заголовка — число ждущих; свёрнутый — без строк, с тем же числом, до конца дня — Р-32',
+    openUsual?.expanded === 'true' &&
+      openUsual.rows > 0 &&
+      openUsual.summary === waiting(openUsual.rows) &&
+      foldedUsual?.expanded === 'false' &&
+      foldedUsual.rows === 0 &&
+      foldedUsual.summary === openUsual.summary &&
+      JSON.stringify(foldKeys) === JSON.stringify([todayKey]),
+    `${JSON.stringify(openUsual)} → ${JSON.stringify(foldedUsual)}; ключи ${JSON.stringify(foldKeys)}`,
+  )
+  await act(`${usualHead}?.click()`)
+  await sleep(500)
+
   // Обычный день — четыре тапа: завтрак, обед, ужин «как обычно» и одно
   // отклонение тапом по блюду в открытом приёме.
   let taps = 0

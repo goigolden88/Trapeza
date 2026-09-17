@@ -9,7 +9,9 @@ import {
   USUAL_MEALS,
   USUAL_SHARE,
   usualDishes,
+  usualFoldId,
   usualOffer,
+  waitingText,
   withSkipped,
 } from './usual.ts'
 
@@ -181,5 +183,18 @@ describe('кнопка предложения — Р-29', () => {
     expect(offerText({ ...usual, items: [...usual.items] }, 'breakfast', dishes)).toBe('Как обычно: каша 2 порции, компот — по 20 завтракам')
     expect(offerText({ items: [{ dishId: 'dish:суп' }], source: { kind: 'usual', meals: 21 } }, 'lunch', dishes)).toBe('Как обычно: суп — по 21 обеду')
     expect(offerText({ items: [{ dishId: 'dish:мясное', grams: 200 }], source: { kind: 'day', name: 'Будни' } }, 'dinner', dishes)).toBe('«Будни»: мясное 200 г')
+  })
+})
+
+describe('сворачивание «Как обычно?» — Р-31, Р-32', () => {
+  it('ключ — с датой: свёрнутое сегодня не прячет завтрашние вопросы', () => {
+    expect(usualFoldId('2026-09-18')).toBe('today:usual:2026-09-18')
+    expect(usualFoldId('2026-09-19')).not.toBe(usualFoldId('2026-09-18'))
+  })
+
+  it('у заголовка — сколько приёмов ждут ответа, со склонением', () => {
+    expect(waitingText(1)).toBe('1 приём')
+    expect(waitingText(3)).toBe('3 приёма')
+    expect(waitingText(5)).toBe('5 приёмов')
   })
 })

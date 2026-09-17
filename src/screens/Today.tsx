@@ -35,7 +35,9 @@ import {
   SKIPPED_KEY,
   skipKey,
   unansweredMeals,
+  usualFoldId,
   usualOffer,
+  waitingText,
   withSkipped,
   type Offer,
   type Unanswered,
@@ -547,8 +549,9 @@ function Repeat({
 /**
  * «Как обычно?» (Р-29) — наверху сегодняшнего дня: вчерашние завтрак, обед
  * и ужин без записей и сегодняшние до текущего приёма. Одним тапом — шаблон
- * или обычные блюда приёма; «Не было» — приём больше не спрашивается. Не
- * складывается: это вопрос, и он уходит, когда на него ответили.
+ * или обычные блюда приёма; «Не было» — приём больше не спрашивается.
+ * Сворачивается (Р-31): у заголовка — сколько приёмов ждут; каждый день
+ * начинается развёрнутым, свёрнутый остаётся свёрнутым до конца дня (Р-32).
  */
 function Usual({
   today,
@@ -606,8 +609,7 @@ function Usual({
   }
 
   return (
-    <section className="block usual">
-      <h2>Как обычно?</h2>
+    <Fold id={usualFoldId(today)} title="Как обычно?" summary={waitingText(rows.length)}>
       <ul className="plain">
         {rows.map((row) => (
           <li key={skipKey(row.date, row.meal)} className="usual__row">
@@ -623,7 +625,7 @@ function Usual({
           </li>
         ))}
       </ul>
-    </section>
+    </Fold>
   )
 }
 
