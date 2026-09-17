@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { hourText, monthsText, shareText } from '../modules/food/labels.ts'
 import help from './Help.tsx?raw'
+import welcome from './Welcome.tsx?raw'
 
 /**
  * Строки исходника, где число вписано цифрой. Импорты, комментарии и имена
@@ -8,8 +9,8 @@ import help from './Help.tsx?raw'
  * а не текст для человека.
  *
  * Сторож взят из «Делу Время» с d86f0aa, у них — из «Дневников»: справка
- * собирает числа из констант кода (CLAUDE.md, «Правила интерфейса»).
- * Приветствие встанет под сторож вместе с `Welcome.tsx`.
+ * и приветствие собирают числа из констант кода (CLAUDE.md, «Правила
+ * интерфейса»).
  */
 function typedNumbers(source: string): string[] {
   return source
@@ -20,8 +21,11 @@ function typedNumbers(source: string): string[] {
     .map((line) => line.trim())
 }
 
-describe('справка — числа только из констант', () => {
-  it.each([['Help.tsx', help]])('в %s ни одна цифра не вписана руками', (_name, source) => {
+describe('справка и приветствие — числа только из констант', () => {
+  it.each([
+    ['Help.tsx', help],
+    ['Welcome.tsx', welcome],
+  ])('в %s ни одна цифра не вписана руками', (_name, source) => {
     expect(typedNumbers(source)).toEqual([])
   })
 

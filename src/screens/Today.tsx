@@ -42,10 +42,15 @@ import {
 } from '../modules/food/usual.ts'
 import { weekRoute } from '../modules/food/week.ts'
 import { Fold } from '../ui/Fold.tsx'
+import { IosNote } from '../ui/Install.tsx'
 import { useNow } from '../ui/useNow.ts'
 import { syncDot } from '../ui/syncDot.ts'
 import { useSyncStatus } from '../ui/useSync.ts'
 import { useToday } from '../ui/useToday.ts'
+import { useFirstRun } from './useFirstRun.ts'
+import { useWhatsNew } from './useWhatsNew.ts'
+import { Welcome } from './Welcome.tsx'
+import { WhatsNew } from './WhatsNew.tsx'
 
 type Data = Food['data']
 
@@ -81,6 +86,8 @@ export function Today() {
   const food = useFood()
   const [hours, setHours] = useState<MealHours>(DEFAULT_MEAL_HOURS)
   const mark = syncDot(useSyncStatus())
+  const first = useFirstRun()
+  const news = useWhatsNew(first)
 
   useEffect(() => {
     void db.settings.get(MEAL_HOURS_KEY).then((stored) => setHours(readMealHours(stored)))
@@ -147,6 +154,22 @@ export function Today() {
           </button>
         )}
       </header>
+
+      {/* Первый запуск: пока база пуста и приветствие не закрыли. */}
+      {first.welcome && <Welcome onDone={first.dismissWelcome} />}
+
+      {/* После обновления — что поменялось. Свежей установке — ничего. */}
+      {news.show.length > 0 && <WhatsNew changes={news.show} onDone={news.dismiss} />}
+
+      {/* iPhone во вкладке Safari: у установленного своё хранилище. */}
+      {first.iosNote && (
+        <section className="stub block">
+          <IosNote empty={first.iosNote === 'before'} />
+          <button type="button" className="link-btn" onClick={first.hideIosNote}>
+            Скрыть
+          </button>
+        </section>
+      )}
 
       {food.status === 'failed' && <p className="error">Записи не прочитались: {food.error}</p>}
       {/* Ключ — день: открытый приём и правка записи — про свой день. */}

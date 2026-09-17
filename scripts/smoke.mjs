@@ -44,6 +44,20 @@ const DATA_AT = process.argv.indexOf('--data')
 const DATA =
   DATA_AT === -1 ? null : resolve(process.env.INIT_CWD ?? process.cwd(), process.argv[DATA_AT + 1] ?? '')
 
+/**
+ * Начала первых строк двух последних записей «Что нового» — из исходника:
+ * проверка «копия без прочитанного видит только последнюю» не устаревает
+ * с каждой новой записью. Из прогона «Делу Время» с d86f0aa.
+ */
+const [PREVIOUS_CHANGE, LATEST_CHANGE] = (() => {
+  const source = readFileSync(join(ROOT, 'src/changes.ts'), 'utf8')
+  const firsts = source
+    .split('lines: [')
+    .slice(1)
+    .map((block) => /'([^']+)'/.exec(block)?.[1] ?? '')
+  return firsts.slice(-2).map((text) => text.slice(0, 40))
+})()
+
 /** Адрес собранного приложения. Заполняется, когда поднимется сервер. */
 let APP = ''
 
@@ -584,6 +598,17 @@ async function scenario() {
     has(start, 'Сегодня') && has(start, 'блюд нет') && has(start, 'Импорт записей'),
     start.replace(/\s+/g, ' ').slice(0, 120),
   )
+  check(
+    'на пустой базе — приветствие «Трапезы» с установкой и справкой; «Что нового» свежей установке не показано',
+    has(start, 'С чего начать') && has(start, 'Установка') && has(start, 'учёт еды по блюдам') &&
+      has(start, 'справка') && !has(start, 'Делу Время') && !has(start, 'Что нового'),
+    line(start, 'учёт еды'),
+  )
+  await act(`byText('button', 'Понятно')?.click()`)
+  await sleep(400)
+  await send('Page.reload')
+  await sleep(2000)
+  check('«Понятно» убирает приветствие и после перезапуска', !has(await screen(), 'С чего начать'))
   const database = await run(`indexedDB.databases().then((list) => list.map((each) => each.name).join(', '))`)
   check('база называется trapeza — Р-10', database === 'trapeza', `базы: ${database}`)
 
@@ -972,6 +997,34 @@ async function helpScenario() {
     'справка — «?» в шапке «Сегодня», вопросы свёрнуты; числа — из констант кода',
     hash === '#/help' && folded === true && questions > 0 && missing.length === 0,
     `${hash}; вопросов ${questions}; нет: ${JSON.stringify(missing)}`,
+  )
+
+  // ─ «Что нового»: копия, обновившаяся с версии без окна, — ключа нет, база
+  // не пуста. Блок из прогона «Делу Время» с d86f0aa; ключ снимается прямо
+  // в базе прогона — приложение само его не снимает никогда.
+  await run(`new Promise((done, fail) => {
+    const request = indexedDB.open('trapeza')
+    request.onerror = () => fail(request.error)
+    request.onsuccess = () => {
+      const tx = request.result.transaction('settings', 'readwrite')
+      tx.objectStore('settings').delete('seenChanges')
+      tx.oncomplete = () => { request.result.close(); done(true) }
+      tx.onerror = () => fail(tx.error)
+    }
+  })`)
+  await go('/')
+  await send('Page.reload')
+  await sleep(2000)
+  const news = await screen()
+  await act(`byText('button', 'Понятно')?.click()`)
+  await sleep(500)
+  await send('Page.reload')
+  await sleep(2000)
+  const newsAfter = await screen()
+  check(
+    '«Что нового» — последняя запись на копии без прочитанного; «Понятно» убирает и после перезапуска',
+    has(news, 'Что нового') && has(news, LATEST_CHANGE) && !has(news, PREVIOUS_CHANGE) && !has(newsAfter, LATEST_CHANGE),
+    line(news, LATEST_CHANGE.slice(0, 20)),
   )
 }
 
