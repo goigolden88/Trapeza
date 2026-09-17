@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { feedDateText, feedHeading, filterFeed, groupFeed, recordsText, type FeedItem } from '../core/feed.ts'
+import { days, plural } from '../core/dates.ts'
+import { feedDateText, feedHeading, filterFeed, groupFeed, type FeedItem } from '../core/feed.ts'
 import type { RecordKind } from '../core/model.ts'
 import { KIND_ORDER, KINDS } from '../registry.ts'
 import { Fold } from '../ui/Fold.tsx'
@@ -8,17 +9,20 @@ import { monthFoldedByDefault } from '../ui/monthFold.ts'
 import { useFeed } from './useFeed.ts'
 
 /**
- * Лента `#/feed` (Р-62): все записи одной хроникой, новые сверху. Взято
- * из «Дневников».
+ * Лента `#/feed`: дни учёта одной хроникой, новые сверху, с поиском.
+ * Вход — ⌕ в шапке «Сегодня» (Р-33). Взято из «Делу Время» с d86f0aa, у них
+ * — из «Дневников»; номера Р-NN ниже в скопированных комментариях — их.
  *
- * «Сегодня» отвечает на вопрос «что делать сегодня», лента — на «что было»:
- * что сделано в августе, когда записана мысль, доехало ли с телефона. Отсюда
- * и устройство: хроника за всё время и поиск по всему сразу, без выбора
- * периода.
+ * «Сегодня» отвечает на вопрос «что я ем сегодня», лента — на «что было»:
+ * что я ел в тот день, когда в последний раз была пицца. Отсюда и устройство:
+ * хроника за всё время и поиск по всему сразу, без выбора периода.
  *
- * Лента только читает (Р-59): строка ведёт туда, где запись правится, а у
- * сделанного и прошлого такого места нет — там строка без перехода.
+ * Лента только читает (их Р-59): строка — день, тап открывает его на
+ * «Сегодня», где записи и правятся.
  */
+/** После «из»: «из 1 дня», «из 3 дней», «из 47 дней». */
+const DAYS_OF: [string, string, string] = ['дня', 'дней', 'дней']
+
 export function Feed() {
   const feed = useFeed()
   const [kind, setKind] = useState<RecordKind | null>(null)
@@ -29,8 +33,10 @@ export function Feed() {
 
   const total = feed.items.length
   // Чипы только тех видов, что есть: чип на пустой вид — тап, ведущий
-  // к «ничего не нашлось».
+  // к «ничего не нашлось». Вид один — ни чипов, ни подписи вида в строке:
+  // «Еда» в каждой строке ничего не говорит (Р-34).
   const present = KIND_ORDER.filter((each) => feed.items.some((item) => item.kind === each))
+  const kindShown = kind === null && present.length > 1
   const shown = filterFeed(feed.items, { kind, query })
   const groups = groupFeed(shown, KIND_ORDER)
   // Поиск и отбор раскрывают все месяцы: найденное не прячется (Р-78).
@@ -43,7 +49,7 @@ export function Feed() {
         <span className="feed__title">{item.title}</span>
         {item.detail && <span className="feed__detail muted">{item.detail}</span>}
       </span>
-      {kind === null && <span className="feed__kind muted">{KINDS[item.kind].label}</span>}
+      {kindShown && <span className="feed__kind muted">{KINDS[item.kind].label}</span>}
       {item.link && (
         <span className="feed__go muted" aria-hidden="true">
           ›
@@ -56,11 +62,11 @@ export function Feed() {
     <>
       <header className="screen-head">
         <h1>Лента</h1>
-        <p className="muted">Заметки, план, учёт и обзоры — одной хроникой, новые сверху.</p>
+        <p className="muted">Что ели по дням — одной хроникой, новые сверху.</p>
       </header>
 
       {total === 0 ? (
-        <p className="stub">Записей пока нет. Заметки, учтённое время и обзоры появятся здесь сами.</p>
+        <p className="stub">Записей пока нет. Дни с записями появятся здесь сами.</p>
       ) : (
         <>
           {present.length > 1 && (
@@ -92,12 +98,14 @@ export function Feed() {
             name="search"
             className="search"
             value={query}
-            placeholder="Поиск: слова в любом порядке, «март», 12.03.2026"
+            placeholder="Поиск: блюдо, категория, заметка, «март», 12.03.2026"
+            aria-label="Поиск по дням"
             onChange={(event) => setQuery(event.target.value)}
           />
 
+          {/* Строка — день, а не запись: и счёт — днями (Р-01). */}
           <p className="muted">
-            {shown.length === total ? recordsText(total) : `Показано ${shown.length} из ${total}`}
+            {shown.length === total ? days(total) : `Показано ${shown.length} из ${total} ${plural(total, DAYS_OF)}`}
           </p>
 
           {shown.length === 0 && <p className="muted">Под поиск и отбор ничего не подошло.</p>}
@@ -145,8 +153,8 @@ export function Feed() {
           })}
 
           <p className="muted">
-            Учёт — строкой на день, тап открывает день. Лента только показывает: правится запись на своём
-            экране, а у сделанного и прошлого строка без перехода.
+            Строка — день: приёмы и блюда, под ней порции и калории. Ищутся и категории, и заметки. Тап
+            открывает день на «Сегодня» — там записи и правятся.
           </p>
         </>
       )}

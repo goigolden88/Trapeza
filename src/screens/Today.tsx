@@ -95,6 +95,10 @@ export function Today() {
         <div className="screen-head__row">
           <h1>{isToday ? 'Сегодня' : 'День'}</h1>
           <div className="screen-head__tools">
+            {/* Лента — не вкладка: её открывают найти день, а не каждый день (Р-33). */}
+            <Link className="gear" to="/feed" aria-label="Лента и поиск">
+              <span aria-hidden="true">⌕</span>
+            </Link>
             <Link className="gear" to="/settings" aria-label="Настройки">
               <span aria-hidden="true">⚙</span>
               {/* Синхронизация живёт в фоне: точка зовёт в «Настройки». */}

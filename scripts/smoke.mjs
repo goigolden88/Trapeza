@@ -931,7 +931,70 @@ async function scenario() {
   await offline(false)
 
   await weekScenario()
+  await feedScenario()
   await repeatScenario()
+}
+
+/**
+ * Лента (Этап 5, Р-33): вход ⌕ с «Сегодня», строка на день, поиск по
+ * категории и дате словами, тап — день на «Сегодня»; месяцы длинного
+ * списка свёрнуты, поиск их раскрывает. Данные — после `weekScenario`:
+ * 21 февраля в обеде Кисель и Торт в две порции.
+ */
+async function feedScenario() {
+  await go('/')
+  await act(`document.querySelector('.screen-head__tools a[aria-label="Лента и поиск"]')?.click()`)
+  await sleep(900)
+  const hash = await run('location.hash')
+  const opened = (await screen()).replace(/ /g, ' ')
+  const heads = await run(`[...document.querySelectorAll('.month-group .fold__btn')].map((el) => [el.textContent.trim(), el.getAttribute('aria-expanded')])`)
+  check(
+    'лента — ⌕ в шапке «Сегодня»; счёт днями; свежий месяц развёрнут, старые свёрнуты — Р-33',
+    hash === '#/feed' &&
+      /(?:^|\n)\d+ (день|дня|дней)(?:\n|$)/.test(opened) &&
+      heads?.[0]?.[1] === 'true' &&
+      heads.slice(1).length > 0 &&
+      heads.slice(1).every(([, expanded]) => expanded === 'false'),
+    `${hash}; ${JSON.stringify(heads)}`,
+  )
+
+  await act(`set(document.querySelector('input[name="search"]'), 'сладости 21 февраля')`)
+  await sleep(600)
+  const searched = (await screen()).replace(/ /g, ' ')
+  const row = await run(`(() => {
+    const rows = [...document.querySelectorAll('.feed__row')]
+    const one = rows[0]
+    return {
+      count: rows.length,
+      href: one?.getAttribute('href'),
+      title: one?.querySelector('.feed__title')?.textContent.trim(),
+      detail: one?.querySelector('.feed__detail')?.textContent.trim(),
+      kind: document.querySelectorAll('.feed__kind').length,
+    }
+  })()`)
+  check(
+    'поиск по категории и дате словами: один день; строка — приёмы с порциями, порции и ккал с основанием',
+    row?.count === 1 &&
+      /(?:^|\n)Показано 1 из \d+ дн(я|ей)(?:\n|$)/.test(searched) &&
+      row.href === '#/?day=2026-02-21' &&
+      row.title === 'Обед: Торт ×2, Кисель' &&
+      row.detail === '3 порции · 80 ккал по 1 из 2 записей' &&
+      row.kind === 0,
+    `${line(searched, 'Показано')}; ${JSON.stringify(row)}`,
+  )
+
+  await act(`document.querySelector('.feed__row')?.click()`)
+  await sleep(900)
+  const day = await screen()
+  check(
+    'тап по строке ленты — этот день на «Сегодня»',
+    (await run('location.hash')) === '#/?day=2026-02-21' && has(day, '21 февраля 2026') && has(day, 'Торт · 2 порции'),
+    `${await run('location.hash')}; ${line(day, 'Торт')}`,
+  )
+
+  await go('/feed')
+  const today = await run(`document.querySelector('.feed__row')?.getAttribute('href')`)
+  check('сегодняшний день в ленте ведёт на «Сегодня» без параметра', today === '#/', String(today))
 }
 
 /** Строка после записи — ровно её текст. */
@@ -1556,7 +1619,7 @@ async function dataScenario(file) {
   check('копия загрузилась через «Восстановить из копии»', loaded !== null, loaded?.[0] ?? restored.slice(0, 160))
 
   // Маршруты прибавляются вместе с экранами, по этапам.
-  const routes = ['/', '/dishes', '/settings', '/week', '/week?w=2026-03-09', '/?day=2026-03-10']
+  const routes = ['/', '/dishes', '/settings', '/week', '/week?w=2026-03-09', '/?day=2026-03-10', '/feed']
 
   for (const route of routes) {
     await go(route)
@@ -1601,6 +1664,26 @@ async function dataScenario(file) {
     'поиск в приёме: найденное из всех живых блюд, под названиями категорий',
     foundLine !== null && Number(foundLine[2]) === liveDishes && Number(foundLine[1]) > 0 && foundHeads > 0,
     `${foundLine?.[0] ?? 'нет строки'}; заголовков ${foundHeads}`,
+  )
+
+  // ─ Лента на настоящих данных: строк — столько, сколько дней с живыми
+  // записями; «март» находит мартовские дни и называет, из скольких.
+  const liveDays = new Set((copy.data?.intake ?? []).filter((each) => !each.deleted).map((each) => each.date)).size
+  const marchDays = new Set(
+    (copy.data?.intake ?? []).filter((each) => !each.deleted && each.date.startsWith('2026-03')).map((each) => each.date),
+  ).size
+  await go('/feed')
+  const feedAll = (await screen()).replace(/ /g, ' ')
+  await act(`set(document.querySelector('input[name="search"]'), 'март 2026')`)
+  await sleep(600)
+  const feedMarch = (await screen()).replace(/ /g, ' ')
+  const marchRows = await run(`document.querySelectorAll('.feed__row').length`)
+  check(
+    'лента на настоящих данных: строка на день; «март 2026» — мартовские дни из всех',
+    new RegExp(`(?:^|\\n)${liveDays} (день|дня|дней)(?:\\n|$)`).test(feedAll) &&
+      marchRows === marchDays &&
+      new RegExp(`(?:^|\\n)Показано ${marchDays} из ${liveDays} дн(я|ей)(?:\\n|$)`).test(feedMarch),
+    `дней ${liveDays}, в марте ${marchDays}; ${line(feedMarch, 'Показано')}; строк ${marchRows}`,
   )
 
   // Норма над первой категорией формой — история по настоящим неделям
