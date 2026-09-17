@@ -3,7 +3,8 @@ import { CHANGES } from '../changes.ts'
 import { db } from '../core/db.ts'
 import { today } from '../core/dates.ts'
 import { SCHEMA_VERSION, SYNCED_STORES } from '../core/model.ts'
-import type { SyncedStore } from '../core/model.ts'
+import type { RecordKind, SyncedStore } from '../core/model.ts'
+import { KIND_ORDER, KINDS, markdownExport } from '../registry.ts'
 import {
   checkReminder,
   disableReminders,
@@ -25,6 +26,8 @@ import { SyncSettings } from '../ui/SyncSettings.tsx'
 import { useSyncStatus } from '../ui/useSync.ts'
 import { isEmptyBase } from './firstRun.ts'
 import { ImportRecords } from './ImportRecords.tsx'
+import { exportSpan, monthChoices, monthTitle, yearChoices } from './period.ts'
+import { useRecordDates } from './useRecordDates.ts'
 import { ChangeList } from './WhatsNew.tsx'
 
 const LABELS: Record<SyncedStore, string> = {
@@ -53,7 +56,7 @@ function describe(error: unknown): string {
  * копии видно и у свёрнутого.
  *
  * Разделы: «Синхронизация» — первой, «Экспорт и импорт» — копия файлом
- * и импорт записей, «Напоминания» (Р-30) и «О приложении». Markdown — в Этапе 5 (Р-16).
+ * импорт записей и markdown за период (Р-34), «Напоминания» (Р-30) и «О приложении».
  */
 export function Settings() {
   const [state, setState] = useState<State>({ status: 'loading' })
@@ -420,6 +423,10 @@ function DataTransfer({ onChanged }: { onChanged: () => Promise<void> }) {
   const [error, setError] = useState('')
   const [lastSaved, setLastSaved] = useState<string | null | undefined>(undefined)
   const [sharable] = useState(canShareFiles)
+  /** Что выгружать в markdown: разделы — все, период — всё время (Р-34; их Р-79). */
+  const [kinds, setKinds] = useState<RecordKind[]>([...KIND_ORDER])
+  const [span, setSpan] = useState('')
+  const months = monthChoices(useRecordDates(), today())
 
   // Дата последней выгрузки лежит в настройках: они не синхронизируются,
   // и это правильно — «когда я забирал копию» у каждого устройства своё.
@@ -441,6 +448,29 @@ function DataTransfer({ onChanged }: { onChanged: () => Promise<void> }) {
       await db.settings.set(LAST_EXPORT, at)
       setLastSaved(at)
       setNote(via === 'share' ? 'Копия отправлена' : 'Файл сохранён')
+    } catch (failure) {
+      setError(describe(failure))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * Markdown — для чтения глазами и на случай отказа от приложения (их Р-63):
+   * записи остаются текстом, который открывается где угодно. Отметку
+   * о выгрузке не ставит — из markdown не восстановиться.
+   */
+  async function saveMarkdown(via: Via) {
+    setBusy(true)
+    setNote('')
+    setError('')
+    try {
+      const snapshot = await db.exportAll()
+      const text = markdownExport(snapshot.data, today(), { kinds, span: exportSpan(span) })
+      if (!(await deliver(via, `trapeza-${today()}.md`, text, 'text/markdown'))) return
+      setNote(
+        `Markdown ${via === 'share' ? 'отправлен' : 'сохранён'}. Он для чтения: обратно в приложение загружается только копия.`,
+      )
     } catch (failure) {
       setError(describe(failure))
     } finally {
@@ -510,6 +540,67 @@ function DataTransfer({ onChanged }: { onChanged: () => Promise<void> }) {
           Восстановление не стирает то, что уже есть: записи сливаются по времени правки,
           побеждает более поздняя.
         </p>
+      </Fold>
+
+      {/* Читать без приложения (их Р-63): в одну сторону, не копия. */}
+      <Fold id="settings:transfer:markdown" title="Markdown для чтения" sub folded>
+        <p className="muted">
+          Записи еды одним файлом: месяцы, дни и приёмы с блюдами, порциями, временем и заметками. Период —
+          ниже, по умолчанию всё время. Открывается где угодно; обратно в приложение не загружается — для
+          этого копия.
+        </p>
+        {/* Разделы на выбор — только когда видов записей больше одного (Р-34). */}
+        {KIND_ORDER.length > 1 && (
+          <div className="chips" role="group" aria-label="Разделы markdown">
+            {KIND_ORDER.map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                className={kinds.includes(kind) ? 'chip chip--on' : 'chip'}
+                aria-pressed={kinds.includes(kind)}
+                onClick={() => setKinds(kinds.includes(kind) ? kinds.filter((each) => each !== kind) : [...kinds, kind])}
+              >
+                {KINDS[kind].label}
+              </button>
+            ))}
+          </div>
+        )}
+        <label className="field">
+          <span>Период</span>
+          <select name="md-period" value={span} onChange={(event) => setSpan(event.target.value)}>
+            <option value="">За всё время</option>
+            {yearChoices(months).map((year) => (
+              <option key={`y:${year}`} value={`y:${year}`}>
+                {year} год
+              </option>
+            ))}
+            {months.map((month) => (
+              <option key={`m:${month}`} value={`m:${month}`}>
+                {monthTitle(month)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="row row--wrap">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void saveMarkdown('file')}
+            disabled={busy || kinds.length === 0}
+          >
+            Сохранить markdown
+          </button>
+          {sharable && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void saveMarkdown('share')}
+              disabled={busy || kinds.length === 0}
+            >
+              Поделиться markdown
+            </button>
+          )}
+        </div>
       </Fold>
 
       <Fold id="settings:transfer:import" title="Импорт записей" sub folded>

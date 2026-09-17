@@ -932,7 +932,67 @@ async function scenario() {
 
   await weekScenario()
   await feedScenario()
+  await markdownScenario()
   await repeatScenario()
+}
+
+/**
+ * Markdown (Этап 5, Р-34): файлом из «Настроек» — шапка «Трапезы», раздел
+ * еды по месяцам, дням и приёмам; период на выбор называется в шапке и
+ * отбирает дни; чипов разделов нет, пока вид один. Данные — после
+ * `weekScenario`: 21 февраля, суббота, в обеде Торт ×2 и Кисель.
+ */
+async function markdownScenario() {
+  const mdFile = () => {
+    const name = readdirSync(profile).find((each) => /^trapeza-\d{4}-\d{2}-\d{2}\.md$/.test(each))
+    return { name, text: name ? readFileSync(join(profile, name), 'utf8') : '' }
+  }
+  const clear = () => {
+    for (const name of readdirSync(profile)) if (/^trapeza-.*\.md$/.test(name)) rmSync(join(profile, name))
+  }
+
+  clear()
+  await go('/settings')
+  await unfold('Экспорт и импорт')
+  await unfold('Markdown для чтения')
+  const chipsShown = await run(`document.querySelectorAll('[aria-label="Разделы markdown"]').length`)
+  await act(`byText('button', 'Сохранить markdown')?.click()`)
+  await sleep(1500)
+  const note = await screen()
+  const all = mdFile()
+  const lines = all.text.split('\n')
+  const at = lines.indexOf('- 21.02, сб — 3 порции')
+  check(
+    'markdown файлом: шапка «Трапезы», месяцы, день с порциями, приёмы подпунктами; разделов на выбор нет — Р-34',
+    has(note, 'Markdown сохранён') &&
+      all.text.startsWith('# Трапеза\n') &&
+      all.text.includes('\n## Еда\n') &&
+      all.text.includes('\n### Февраль 2026\n') &&
+      at > 0 &&
+      lines[at + 1] === '  - Обед: Торт ×2, Кисель' &&
+      !all.text.includes('Период:') &&
+      chipsShown === 0,
+    all.name ? `${all.name}; ${all.text.length} знаков; «${lines[at] ?? ''}» / «${lines[at + 1] ?? ''}»; чипов ${chipsShown}` : 'файла нет',
+  )
+
+  clear()
+  await act(`
+    const field = document.querySelector('select[name=md-period]');
+    set(field, 'm:2026-03');
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+  `)
+  await sleep(300)
+  await act(`byText('button', 'Сохранить markdown')?.click()`)
+  await sleep(1500)
+  const march = mdFile()
+  check(
+    'markdown за месяц: период назван в шапке, другие месяцы не попали',
+    march.text.includes('\nПериод: март 2026.') &&
+      march.text.includes('\n### Март 2026\n') &&
+      !march.text.includes('Февраль') &&
+      !march.text.includes('Сентябрь'),
+    march.name ? `${march.name}; ${march.text.length} знаков` : 'файла нет',
+  )
 }
 
 /**
