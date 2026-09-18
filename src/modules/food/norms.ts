@@ -10,9 +10,9 @@
  * Чистые функции, без React и без базы.
  */
 
-import { addDays, isDateStr, periodDays, weekPeriod, weekStart, type DateStr, type Period } from '../../core/dates.ts'
-import { numberOf } from '../../core/importing.ts'
-import type { Category, Dish, Intake, Norm } from '../../core/model.ts'
+import { addDays, isDateStr, periodDays, weekPeriod, weekStart, type DateStr, type Period } from '../../shared/core/dates.ts'
+import { numberOf } from '../../shared/core/importing.ts'
+import type { Category, Dish, Intake, Norm } from '../../app/model.ts'
 import { cleanName } from './names.ts'
 
 /** Дней в неделе: «не меньше» — до стольких. */

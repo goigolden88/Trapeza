@@ -7,8 +7,8 @@
  * запись вне суммы, и это видно.
  */
 
-import { plural } from '../../core/dates.ts'
-import type { Dish, Intake } from '../../core/model.ts'
+import { plural } from '../../shared/core/dates.ts'
+import type { Dish, Intake } from '../../app/model.ts'
 
 /** Ккал одной порции: `kcalPortion` или `portionGrams × kcal100 / 100`. Не хватает данных — null. */
 export function portionKcal(dish: Dish): number | null {

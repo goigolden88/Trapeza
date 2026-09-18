@@ -1,189 +1,31 @@
+/*
+ * Стили «Трапезы»: её экраны и акцент (Р-44). Каркас — переменные, шапка,
+ * нижняя панель, кнопки, поля, сворачивание, график, компоненты ядра — в
+ * `shared/styles.css`, он подключается первым (Р-48, `main.tsx`). Здесь —
+ * всё, чего в каркасе нет; правило каркаса отсюда не переопределяется.
+ */
+
 :root {
-  --bg: #ffffff;
-  --surface: #f4f4f5;
-  --text: #16181d;
-  --muted: #6b7280;
-  --line: #e4e4e7;
   /* Акцент экранов тёплый, а иконка зелёная (scripts/icons.mjs) — они
      расходятся намеренно (Р-44). Иконку различают среди трёх приложений
      семьи, экран ничем не путают: он один на весь запуск. Текст
      на акценте — своя переменная: на янтаре в тёмной теме белый
-     не читается. */
+     не читается. Остальные переменные — каркаса ядра. */
   --accent: #b3620b;
   --on-accent: #ffffff;
-  --error: #c02626;
-  --ok: #3f8f4a;
-  --due: #b07708;
-  /* Цвет столбцов графика (Р-57). В светлой теме — акцент; проверен
-     на контраст и светлоту против фона скриптом палитры. */
+  /* Цвет столбцов графика (Р-57 «Делу Время»). В светлой теме — акцент;
+     проверен на контраст и светлоту против фона скриптом палитры. */
   --chart: #b3620b;
-
-  --tabs-height: 56px;
-
-  color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1b1c1e;
-    --surface: #232427;
-    --text: #ececee;
-    --muted: #9497a1;
-    --line: #33353a;
     --accent: #f2b35b;
     --on-accent: #1b1c1e;
-    --error: #ff7b7b;
-    --ok: #6fbf7c;
-    --due: #e3a83a;
     /* Тёмный акцент для столбцов слишком светел: ступень темнее, та же
        янтарная гамма, проверена против тёмного фона. */
     --chart: #c9822b;
   }
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  /* Двойной тап по вкладке не должен зумить страницу. */
-  touch-action: manipulation;
-  -webkit-text-size-adjust: 100%;
-}
-
-h1 {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-}
-
-h2 {
-  margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-}
-
-p {
-  margin: 0 0 12px;
-}
-
-/* Цвет ссылок свой: иначе браузер красит посещённую фиолетовым. */
-a {
-  color: var(--accent);
-}
-
-/* Установленное на iPhone рисуется под строкой состояния и вырезом камеры:
-   black-translucent и viewport-fit=cover в index.html. Зону, которую занял
-   телефон, отдаёт внешний контейнер целиком, а поля экрана внутри остаются
-   своими. Размер выреза сообщает сам телефон — чисел здесь нет; вне iPhone
-   и во вкладке это ноль. Нижнюю зону держит панель вкладок. */
-.layout {
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
-}
-
-.content {
-  flex: 1;
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 24px 16px calc(var(--tabs-height) + 24px);
-}
-
-.screen-head {
-  margin-bottom: 24px;
-}
-
-/* Заголовок с шестерёнкой справа. Настроек нет в нижней панели:
-   открывают их раз в месяц, и место там они занимали бы наравне
-   с ежедневным. */
-.screen-head__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-/* Кнопки шапки рядом. Отступ к краю — у группы, а не у каждой. */
-.screen-head__tools {
-  display: flex;
-  align-items: center;
-  margin-right: -10px;
-}
-
-.screen-head__tools .gear {
-  margin-right: 0;
-}
-
-.gear {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* Не меньше 44 пикселей: палец в глиф размером с букву не попадает. */
-  min-width: 44px;
-  min-height: 44px;
-  margin-right: -10px;
-  color: var(--muted);
-  font-size: 22px;
-  line-height: 1;
-  text-decoration: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* Точка на шестерёнке: очередь не ушла либо что-то сломалось.
-   Стоит в потоке рядом с глифом — шестерёнка flex-строка, и
-   позиционировать точку абсолютно не от чего. */
-.dot {
-  align-self: flex-start;
-  margin: 6px 0 0 1px;
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--muted);
-}
-
-.dot--error {
-  background: var(--error);
-}
-
-/* Флажок «Синхронизировать» в настройках. */
-.check {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  font-size: 15px;
-}
-
-.check input {
-  width: 20px;
-  height: 20px;
-  accent-color: var(--accent);
-}
-
-.screen-head p {
-  margin: 4px 0 0;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.error {
-  color: var(--error);
 }
 
 .stub {
@@ -191,10 +33,6 @@ a {
   padding: 16px;
   border: 1px dashed var(--line);
   border-radius: 10px;
-}
-
-.block {
-  margin-bottom: 28px;
 }
 
 .stats {
@@ -230,73 +68,6 @@ a {
 
 /* ─── График столбцами (Р-57) ────────────────────────────────────────────── */
 
-.chart {
-  width: 100%;
-  margin: 4px 0 8px;
-}
-
-.chart__svg {
-  display: block;
-  overflow: visible;
-}
-
-/* Сетка — волосяная и сплошная, на ступень от фона: данные громче. */
-.chart__grid line {
-  stroke: var(--line);
-  stroke-width: 1;
-  shape-rendering: crispEdges;
-}
-
-.chart__grid text,
-.chart__label {
-  fill: var(--muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.chart__label--muted {
-  opacity: 0.55;
-}
-
-.chart__value {
-  fill: var(--text);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.chart__bar {
-  fill: var(--chart);
-}
-
-/* Цель тапа — весь слот: прозрачна, пока на неё не навели. */
-.chart__hit {
-  fill: transparent;
-}
-
-a.chart__col {
-  cursor: pointer;
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-a.chart__col:hover .chart__hit,
-a.chart__col:focus-visible .chart__hit {
-  fill: var(--surface);
-}
-
-a.chart__col:focus-visible .chart__label {
-  fill: var(--text);
-}
-
-.minibars {
-  display: block;
-}
-
-.minibars__base {
-  stroke: var(--line);
-  stroke-width: 1;
-}
-
 .stats .minibars-cell {
   width: 96px;
   padding-left: 12px;
@@ -326,121 +97,6 @@ a.chart__col:focus-visible .chart__label {
   font-variant-numeric: tabular-nums;
 }
 
-/* Нижняя навигация.
-   safe-area-inset-bottom обязателен: без него панель уезжает под полосу
-   жестов на iPhone и последняя вкладка перестаёт нажиматься. */
-.tabs {
-  position: fixed;
-  inset: auto 0 0 0;
-  display: flex;
-  background: var(--surface);
-  border-top: 1px solid var(--line);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-.tab {
-  flex: 1;
-  /* min-width: auto у элементов флекса не даёт подписи сжиматься ниже
-     собственной ширины, и панель уезжает вбок при крупном системном
-     шрифте. Ноль вместе с многоточием держит её на месте всегда. */
-  min-width: 0;
-  height: var(--tabs-height);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 2px;
-  color: var(--muted);
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.tab--active {
-  color: var(--accent);
-  box-shadow: inset 0 2px 0 var(--accent);
-}
-
-/* ─── Формы ──────────────────────────────────────────────────────────────── */
-
-.btn {
-  /* Кнопкой бывает и ссылка. Без этого она строчная: подчёркнута
-     и сплющена в рамке. */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  min-height: 44px;
-  padding: 0 18px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-size: 15px;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.btn--primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.field input,
-.field select,
-.field textarea {
-  min-height: 44px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--bg);
-  color: var(--text);
-  /* 16px обязательны: на меньшем шрифте Safari зумит страницу при фокусе. */
-  font: inherit;
-  font-size: 16px;
-}
-
-/* Поле заметки: высота задаётся строками, а не 44 пикселями. */
-.field textarea {
-  min-height: 0;
-  padding: 10px 12px;
-  resize: vertical;
-}
-
-.form__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 /* ─── Мелочи экранов ─────────────────────────────────────────────────────── */
 
 .link-btn {
@@ -454,114 +110,12 @@ a.chart__col:focus-visible .chart__label {
   -webkit-tap-highlight-color: transparent;
 }
 
-.plain {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Строка, которой разрешено переноситься: кнопки на узком телефоне
-   в одну строку не помещаются. */
-.row--wrap {
-  flex-wrap: wrap;
-}
-
 /* Подзаголовок внутри блока: «Установка» в приветствии и настройках. */
 .unit__name {
   margin: 0 0 6px;
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
-}
-
-/* Отдельная панель: приветствие читается как другое, а не ещё один блок. */
-.panel {
-  padding: 6px 14px 10px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-}
-
-/* ─── Сворачивание ───────────────────────────────────────────────────────── */
-
-/* Заголовок блока — кнопка. Выглядит как прежний заголовок, а палец
-   попадает в строку высотой 44 пикселя. Стрелка нарисована стилем,
-   а не текстом: текст кнопки остаётся ровно названием блока. */
-.fold__head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 4px;
-}
-
-.fold__btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.fold__btn::before {
-  content: '▾';
-  width: 1em;
-  text-align: center;
-}
-
-.fold__btn[aria-expanded='false']::before {
-  content: '▸';
-}
-
-.fold__summary {
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 400;
-}
-
-/* Подгруппа внутри блока: «Копия всех данных» в «Экспорте и импорте». */
-.fold--sub {
-  margin-bottom: 12px;
-}
-
-.fold--sub > .fold__head {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-/* Свёрнутый блок — строка оглавления: без отступа под собой, с тонкой
-   линией до соседа. С отступом развёрнутого экран из свёрнутых разделов
-   занимал бы вдвое больше места. */
-.block.fold--folded {
-  margin-bottom: 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.block.fold--folded > .fold__head {
-  margin: 0;
-}
-
-.fold--folded + .block:not(.fold--folded) {
-  margin-top: 16px;
 }
 
 /* ─── Заметки ────────────────────────────────────────────────────────────── */
@@ -685,38 +239,11 @@ a.chart__col:focus-visible .chart__label {
   flex: none;
 }
 
-/* Отчёт об ошибке — целиком до отправки (Р-66). Из «Дневников»; перенос
-   длинных строк браузера — чтобы экран не раздвигало вбок. */
-.report {
-  margin: 12px 0;
-  padding: 12px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: 13px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 /* ─── Мелочи, вернувшиеся с учётом времени ───────────────────────────────── */
 
 .back {
   color: var(--accent);
   text-decoration: none;
-}
-
-/* Поле в строке с кнопкой занимает всё свободное место. */
-.row input {
-  flex: 1;
-  min-width: 0;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
-  font-size: 16px;
 }
 
 /* Название-кнопка. Выглядит как название, ведёт себя как кнопка:
@@ -895,20 +422,6 @@ a.chart__col:focus-visible .chart__label {
   overflow-wrap: anywhere;
 }
 
-/* Выбор в строке с кнопкой — как поле: во всё свободное место. */
-.row select {
-  flex: 1;
-  min-width: 0;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
-  font-size: 16px;
-}
-
 /* Выбранное — заливкой, а не галочкой: галочка требует прицеливания. */
 .chip--on {
   border-color: var(--accent);
@@ -921,11 +434,6 @@ a.chart__col:focus-visible .chart__label {
 .chip--today {
   flex: none;
   min-height: 44px;
-}
-
-.btn--danger {
-  border-color: var(--error);
-  color: var(--error);
 }
 
 /* ─── План дня ───────────────────────────────────────────────────────────── */
@@ -1180,34 +688,6 @@ span.plan-item__text {
 
 /* ─── Импорт записей ─────────────────────────────────────────────────────── */
 
-.import {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Поле под ответ ИИ: JSON длинный, шрифт как у поля формы. */
-.import__text {
-  width: 100%;
-  min-height: 96px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
-  font-size: 16px;
-  resize: vertical;
-}
-
-/* Сам промпт: виден целиком и выделяется руками, если буфер не дался. */
-.prompt {
-  white-space: pre-wrap;
-  font-size: 12px;
-  max-height: 320px;
-  overflow: auto;
-}
-
 /* Листание дней на «Времени» (Р-25): стрелки по краям, дата посередине. */
 .day-nav {
   display: flex;
@@ -1235,39 +715,6 @@ span.plan-item__text {
 .recall {
   white-space: pre-wrap;
   padding-block: 4px;
-}
-
-/* Кнопки «в начало» и «в конец» — справа над нижней панелью, где их
-   достаёт большой палец и где они не закрывают кнопки отметок. */
-.scroll-btns {
-  position: fixed;
-  right: 12px;
-  bottom: calc(var(--tabs-height) + env(safe-area-inset-bottom, 0px) + 12px);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  transition: opacity 200ms ease-out;
-}
-
-/* Экран не листают — кнопки прячутся и не закрывают текст под собой (Р-73). */
-.scroll-btns--idle {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.scroll-btn {
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-size: 18px;
-  opacity: 0.85;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgb(0 0 0 / 0.15);
-  -webkit-tap-highlight-color: transparent;
 }
 
 /* Группы категорий (Р-81): строка группы в итогах — жирнее, её категории —

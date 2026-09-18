@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { db } from '../core/db.ts'
-import { addDays, days as daysText, formatDateLong, formatPeriod, nowIso, plural, weekStart, type DateStr } from '../core/dates.ts'
-import { ulid } from '../core/id.ts'
-import type { Category, Norm } from '../core/model.ts'
+import { db } from '../app/core.ts'
+import { addDays, days as daysText, formatDateLong, formatPeriod, nowIso, plural, weekStart, type DateStr } from '../shared/core/dates.ts'
+import { ulid } from '../shared/core/id.ts'
+import type { Category, Norm } from '../app/model.ts'
 import { activeCategories, sortCategories } from '../modules/food/catalog.ts'
 import {
   FORMS,
@@ -36,9 +36,9 @@ import {
 } from '../modules/food/norms.ts'
 import { useFood, type Food } from '../modules/food/useFood.ts'
 import { dayHref, loggedText, viewedWeek, weekKcalText, weekSummary, type WeekSummary } from '../modules/food/week.ts'
-import { BarChart, MiniBars } from '../ui/BarChart.tsx'
-import { Fold } from '../ui/Fold.tsx'
-import { useToday } from '../ui/useToday.ts'
+import { BarChart, MiniBars } from '../shared/ui/BarChart.tsx'
+import { Fold } from '../shared/ui/Fold.tsx'
+import { useToday } from '../shared/ui/useToday.ts'
 
 type Data = Food['data']
 

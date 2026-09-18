@@ -19,9 +19,9 @@ import {
   daysBetween,
   type DateStr,
   type Period,
-} from '../../core/dates.ts'
-import { escapeMarkdown as md, feedHeading, type FeedItem } from '../../core/feed.ts'
-import type { Category, Dish, Intake, Meal } from '../../core/model.ts'
+} from '../../shared/core/dates.ts'
+import { escapeMarkdown as md, feedHeading, type FeedItem } from '../../shared/core/feed.ts'
+import type { Category, Dish, Intake, Meal } from '../../app/model.ts'
 import { kcalText, sumKcal } from './kcal.ts'
 import { FORMS, formatNumber, MEAL_NAMES, MEALS, portions, WEEKDAYS_SHORT } from './labels.ts'
 import { recordPortions, summarize } from './summary.ts'

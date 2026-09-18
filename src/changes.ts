@@ -13,17 +13,11 @@
  * «текст из констант» — для текстов, которые описывают, как приложение
  * работает сейчас.
  *
- * Механика взята из «Делу Время», у них — из «Дневников».
+ * Механика — что показать и что отметить прочитанным — в ядре,
+ * `shared/screens/changes.ts` (Я-06 «FamilyCore»); здесь только список.
  */
 
-import type { DateStr } from './core/dates.ts'
-
-export type Change = {
-  /** Растёт на единицу с каждой записью. По нему устройство помнит прочитанное. */
-  id: number
-  date: DateStr
-  lines: readonly string[]
-}
+import type { Change } from './shared/screens/changes.ts'
 
 /** От старых к новым. Новая запись — в конец. */
 export const CHANGES: readonly Change[] = [
@@ -193,32 +187,3 @@ export const CHANGES: readonly Change[] = [
   },
 ]
 
-/**
- * Что показать после обновления и что отметить прочитанным.
- *
- * `seen` — последний прочитанный `id`, null — ключа на устройстве нет.
- * Ключа нет у двух разных установок, и различает их база:
- *
- * - пустая — свежая установка: ей всё новое, и список изменений ей ни о чём
- *   не говорит. Показываем ничего, отмечаем прочитанным всё
- * - с записями — копия, обновившаяся с версии, где этого окна не было:
- *   показываем последнюю запись, ради неё окно и появилось
- */
-export function unseenChanges(
-  changes: readonly Change[],
-  seen: number | null,
-  empty: boolean,
-): { show: Change[]; markSeen: number | null } {
-  const latest = changes.at(-1)?.id ?? null
-  if (seen === null) {
-    if (empty) return { show: [], markSeen: latest }
-    const last = changes.at(-1)
-    return { show: last ? [last] : [], markSeen: null }
-  }
-  return { show: changes.filter((change) => change.id > seen), markSeen: null }
-}
-
-/** Последний `id` — его пишет «Понятно». */
-export function latestChange(changes: readonly Change[]): number {
-  return changes.at(-1)?.id ?? 0
-}

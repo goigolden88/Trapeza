@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { db } from '../core/db.ts'
-import { plural } from '../core/dates.ts'
-import { ulid } from '../core/id.ts'
-import type { Category, Dish, Template } from '../core/model.ts'
+import { db } from '../app/core.ts'
+import { plural } from '../shared/core/dates.ts'
+import { ulid } from '../shared/core/id.ts'
+import type { Category, Dish, Template } from '../app/model.ts'
 import {
   activeCategories,
   activeDishes,
@@ -34,7 +34,7 @@ import {
   type TemplateKind,
 } from '../modules/food/templates.ts'
 import { useFood, writePlan, type Food } from '../modules/food/useFood.ts'
-import { Fold } from '../ui/Fold.tsx'
+import { Fold } from '../shared/ui/Fold.tsx'
 
 type Data = Food['data']
 

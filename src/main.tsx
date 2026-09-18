@@ -2,10 +2,12 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import { App } from './app.tsx'
-import { db } from './core/db.ts'
+import { db } from './app/core.ts'
 import { applyLaunch } from './launch.ts'
-import { listenInstall } from './ui/install.ts'
-import { listenErrors } from './ui/report.ts'
+import { listenInstall } from './shared/ui/install.ts'
+import { listenErrors } from './shared/ui/report.ts'
+// Каркас стилей ядра — первым, свои экраны и акцент (Р-44) — после (Р-48).
+import './shared/styles.css'
 import './styles.css'
 
 // До первого экрана: ярлык приходит адресом `?go=…`, и роутер должен
@@ -15,8 +17,9 @@ applyLaunch()
 // До первого экрана: Chrome присылает событие установки рано и один раз.
 listenInstall()
 
-// Тоже до первого экрана: ошибка при отрисовке должна попасть в журнал (Р-66).
-listenErrors()
+// Тоже до первого экрана: ошибка при отрисовке должна попасть в журнал
+// (Р-66 «Делу Время»).
+listenErrors(db.settings)
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Не найден #root')

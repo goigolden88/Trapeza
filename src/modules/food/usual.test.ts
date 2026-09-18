@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Dish, Intake, Template } from '../../core/model.ts'
+import type { Dish, Intake, Template } from '../../app/model.ts'
 import {
   MAIN_MEALS,
   offerText,

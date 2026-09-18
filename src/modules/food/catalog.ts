@@ -8,8 +8,8 @@
  * на блюдо, нормы — на набор категорий (Р-13).
  */
 
-import { nowIso } from '../../core/dates.ts'
-import type { Category, Dish, Intake, Template, Norm } from '../../core/model.ts'
+import { nowIso } from '../../shared/core/dates.ts'
+import type { Category, Dish, Intake, Template, Norm } from '../../app/model.ts'
 import { cleanName, idFor, normName, type Named } from './names.ts'
 
 /** Всё, что задевает справочник. С надгробиями: по ним видно, какие id заняты. */

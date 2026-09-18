@@ -5,8 +5,8 @@
  * Чистые функции, без React и без базы.
  */
 
-import { addDays, isDateStr, plural, type DateStr } from '../../core/dates.ts'
-import type { Dish, Intake, Meal, Template } from '../../core/model.ts'
+import { addDays, isDateStr, plural, type DateStr } from '../../shared/core/dates.ts'
+import type { Dish, Intake, Meal, Template } from '../../app/model.ts'
 import { amountText } from './forms.ts'
 import { MEALS } from './labels.ts'
 import type { RepeatItem } from './repeat.ts'

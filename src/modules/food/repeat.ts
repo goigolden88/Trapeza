@@ -5,8 +5,8 @@
  * числом видит тот порядок, какой был бы в тот день (Р-17).
  */
 
-import { isDateStr, type DateStr } from '../../core/dates.ts'
-import type { Dish, Intake, Meal } from '../../core/model.ts'
+import { isDateStr, type DateStr } from '../../shared/core/dates.ts'
+import type { Dish, Intake, Meal } from '../../app/model.ts'
 
 /** Окно частоты — месяцев до просматриваемого дня (Р-17). */
 export const FREQUENCY_MONTHS = 1

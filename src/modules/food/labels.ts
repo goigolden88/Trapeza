@@ -5,8 +5,8 @@
  * «Правила интерфейса»).
  */
 
-import { days, formatDateLong, plural } from '../../core/dates.ts'
-import type { Meal, Norm } from '../../core/model.ts'
+import { days, formatDateLong, plural } from '../../shared/core/dates.ts'
+import type { Meal, Norm } from '../../app/model.ts'
 import { NORM_MIN_WEEKS, type NormHistory, type Touch, type WeekCheck } from './norms.ts'
 
 /** Приёмы в порядке дня. Перекус — последним: он без часов (Р-11). */

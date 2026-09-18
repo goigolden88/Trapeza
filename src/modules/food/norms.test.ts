@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { addDays, type DateStr } from '../../core/dates.ts'
-import type { Category, Dish, Intake, Norm } from '../../core/model.ts'
+import { addDays, type DateStr } from '../../shared/core/dates.ts'
+import type { Category, Dish, Intake, Norm } from '../../app/model.ts'
 import { normCheckText, normHistoryText, normRuleText, touchText } from './labels.ts'
 import {
   activeNorms,

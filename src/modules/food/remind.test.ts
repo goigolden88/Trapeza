@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Intake } from '../../core/model.ts'
+import type { Intake } from '../../app/model.ts'
 import { unfilledNotice } from './remind.ts'
 import { skipKey } from './usual.ts'
 

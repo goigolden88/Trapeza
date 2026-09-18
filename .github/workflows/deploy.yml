@@ -22,7 +22,11 @@ jobs:
     name: Сборка
     runs-on: ubuntu-latest
     steps:
+      # Ядро — подмодулем в src/shared (Р-46): без этой строки сборка
+      # останется без ядра и упадёт непонятной ошибкой.
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - uses: actions/setup-node@v4
         with:

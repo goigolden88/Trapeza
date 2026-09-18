@@ -19,7 +19,7 @@ import {
   type DateStr,
   type MonthStr,
   type Period,
-} from '../core/dates.ts'
+} from '../shared/core/dates.ts'
 
 function capitalized(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)

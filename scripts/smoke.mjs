@@ -1058,7 +1058,7 @@ async function helpScenario() {
   await unfoldAll()
   const text = (await screen()).replace(/ /g, ' ')
   const hours = /\{ lunch: (\d+), dinner: (\d+) \}/.exec(constant('src/modules/food/meals.ts', 'DEFAULT_MEAL_HOURS'))
-  const windowHours = /\{ from: (\d+), to: (\d+) \}/.exec(constant('src/notify.ts', 'DEFAULT_WINDOW'))
+  const windowHours = /\{ from: (\d+), to: (\d+) \}/.exec(constant('src/shared/notify.ts', 'DEFAULT_WINDOW'))
   const expected = [
     `завтрак до ${hours?.[1].padStart(2, '0')}:00, обед до ${hours?.[2].padStart(2, '0')}:00`,
     `до ${constant('src/modules/food/picker.ts', 'FREQUENT_MAX')} блюд`,
@@ -1748,7 +1748,8 @@ async function syncScenario() {
   )
   check(
     'README «Трапезы» положен приложением в пустой репозиторий',
-    (repoFiles()['README.md'] ?? '').startsWith('# Данные «Трапезы»') &&
+    // Заголовок собирает ядро из имени приложения, не склоняя его (FamilyCore).
+    (repoFiles()['README.md'] ?? '').startsWith('# Данные приложения «Трапеза»') &&
       (repoFiles()['README.md'] ?? '').includes('`intake/ГГГГ-ММ.json`'),
     (repoFiles()['README.md'] ?? 'README нет').slice(0, 60),
   )

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Category, Dish, Intake, Template, Norm } from '../../core/model.ts'
+import type { Category, Dish, Intake, Template, Norm } from '../../app/model.ts'
 import {
   activeCategories,
   activeDishes,

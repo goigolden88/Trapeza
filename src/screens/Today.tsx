@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { db } from '../core/db.ts'
-import { addDays, formatDate, formatDateLong, formatPeriod, nowIso, plural, weekPeriod, type DateStr } from '../core/dates.ts'
-import { ulid } from '../core/id.ts'
-import type { Category, Dish, Intake, Meal, Norm, Template } from '../core/model.ts'
+import { db } from '../app/core.ts'
+import { addDays, formatDate, formatDateLong, formatPeriod, nowIso, plural, weekPeriod, type DateStr } from '../shared/core/dates.ts'
+import { ulid } from '../shared/core/id.ts'
+import type { Category, Dish, Intake, Meal, Norm, Template } from '../app/model.ts'
 import { activeDishes, createDish } from '../modules/food/catalog.ts'
 import { dayMeals, tapDish, viewedDay } from '../modules/food/day.ts'
 import { amountText, intakeInput, readIntake, stepPortions, type IntakeInput } from '../modules/food/forms.ts'
@@ -43,16 +43,18 @@ import {
   type Unanswered,
 } from '../modules/food/usual.ts'
 import { weekRoute } from '../modules/food/week.ts'
-import { Fold } from '../ui/Fold.tsx'
-import { IosNote } from '../ui/Install.tsx'
-import { useNow } from '../ui/useNow.ts'
-import { syncDot } from '../ui/syncDot.ts'
-import { useSyncStatus } from '../ui/useSync.ts'
-import { useToday } from '../ui/useToday.ts'
-import { useFirstRun } from './useFirstRun.ts'
-import { useWhatsNew } from './useWhatsNew.ts'
+import { Fold } from '../shared/ui/Fold.tsx'
+import { IosNote } from '../shared/ui/Install.tsx'
+import { useNow } from '../shared/ui/useNow.ts'
+import { syncDot } from '../shared/ui/syncDot.ts'
+import { useSyncStatus } from '../shared/ui/useSync.ts'
+import { useToday } from '../shared/ui/useToday.ts'
+import { useFirstRun } from '../shared/screens/useFirstRun.ts'
+import { useWhatsNew } from '../shared/screens/useWhatsNew.ts'
+import { config } from '../app/config.ts'
+import { CHANGES } from '../changes.ts'
 import { Welcome } from './Welcome.tsx'
-import { WhatsNew } from './WhatsNew.tsx'
+import { WhatsNew } from '../shared/screens/WhatsNew.tsx'
 
 type Data = Food['data']
 
@@ -85,8 +87,9 @@ export function Today() {
   const food = useFood()
   const [hours, setHours] = useState<MealHours>(DEFAULT_MEAL_HOURS)
   const mark = syncDot(useSyncStatus())
-  const first = useFirstRun()
-  const news = useWhatsNew(first)
+  // В счёт первого запуска — все хранилища: у «Трапезы» данные человека — все пять (Р-15).
+  const first = useFirstRun(config.stores)
+  const news = useWhatsNew(first, CHANGES)
 
   useEffect(() => {
     void db.settings.get(MEAL_HOURS_KEY).then((stored) => setHours(readMealHours(stored)))

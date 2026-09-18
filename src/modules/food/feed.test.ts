@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { monthPeriod } from '../../core/dates.ts'
-import { filterFeed } from '../../core/feed.ts'
-import type { Category, Dish, Intake } from '../../core/model.ts'
+import { monthPeriod } from '../../shared/core/dates.ts'
+import { filterFeed } from '../../shared/core/feed.ts'
+import type { Category, Dish, Intake } from '../../app/model.ts'
 import { dayDetail, dayLink, intakeFeed, intakeMarkdown, mealsLine, MISSING_DISH } from './feed.ts'
 
 const at = '2026-09-16T10:00:00.000Z'

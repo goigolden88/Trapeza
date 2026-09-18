@@ -6,7 +6,7 @@
  * хранилище»); экрана правки пока нет, умолчания — 13 и 18.
  */
 
-import type { Meal } from '../../core/model.ts'
+import type { Meal } from '../../app/model.ts'
 
 export type MealHours = { lunch: number; dinner: number }
 

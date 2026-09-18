@@ -14,7 +14,7 @@
  * Образец — `modules/time/import.ts` «Делу Время».
  */
 
-import { toDateStr } from '../../core/dates.ts'
+import { toDateStr } from '../../shared/core/dates.ts'
 import {
   absent,
   dayOf,
@@ -26,8 +26,8 @@ import {
   type ImportPlan,
   type ImportSpec,
   type Issue,
-} from '../../core/importing.ts'
-import type { Category, Dish, Intake, Meal } from '../../core/model.ts'
+} from '../../shared/core/importing.ts'
+import type { Category, Dish, Intake, Meal, StoreRecord } from '../../app/model.ts'
 import { createCategory, createDish } from './catalog.ts'
 import { FORMS, MEAL_NAMES, MEALS } from './labels.ts'
 import { findByName } from './names.ts'
@@ -165,7 +165,7 @@ export function mealOf(value: unknown): Meal | null {
 
 // ─── Разделы ───────────────────────────────────────────────────────────────
 
-export function importCategories(raw: unknown, data: FoodData, ctx: ImportContext): ImportPlan {
+export function importCategories(raw: unknown, data: FoodData, ctx: ImportContext): ImportPlan<StoreRecord> {
   const section = categoriesImportSpec.section
   const { records, issues } = recordsOf(section, raw)
   const { categoryFor, created } = categoryFinder(data, ctx)
@@ -194,7 +194,7 @@ export function importCategories(raw: unknown, data: FoodData, ctx: ImportContex
   }
 }
 
-export function importDishes(raw: unknown, data: FoodData, ctx: ImportContext): ImportPlan {
+export function importDishes(raw: unknown, data: FoodData, ctx: ImportContext): ImportPlan<StoreRecord> {
   const section = dishesImportSpec.section
   const { records, issues } = recordsOf(section, raw)
   const issue = (title: string, reason: string) => issues.push({ section, title, reason })
@@ -264,7 +264,7 @@ function intakeKey(date: string, meal: Meal, dishId: string): string {
   return `${date}|${meal}|${dishId}`
 }
 
-export function importIntake(raw: unknown, data: FoodData, ctx: ImportContext): ImportPlan {
+export function importIntake(raw: unknown, data: FoodData, ctx: ImportContext): ImportPlan<StoreRecord> {
   const section = intakeImportSpec.section
   const { records, issues } = recordsOf(section, raw)
   const issue = (title: string, reason: string) => issues.push({ section, title, reason } satisfies Issue)

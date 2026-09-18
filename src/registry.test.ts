@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { IMPORT_FORMAT, IMPORT_VERSION, planTotal, type ImportPlan } from './core/importing.ts'
-import { monthPeriod } from './core/dates.ts'
-import { SYNCED_STORES } from './core/model.ts'
+import { IMPORT_VERSION, planTotal, type ImportPlan } from './shared/core/importing.ts'
+import { importing } from './app/core.ts'
+
+const IMPORT_FORMAT = importing.format
+import { monthPeriod } from './shared/core/dates.ts'
+import { SYNCED_STORES } from './app/model.ts'
 import { feedItems, importPrompt, KIND_ORDER, KINDS, markdownExport, planImport, type Data } from './registry.ts'
 
 // По образцу теста реестра «Делу Время» с d86f0aa, у них — «Дневников»:

@@ -10,8 +10,8 @@
  * «Проверить сейчас».
  */
 
-import { addDays, type DateStr } from '../../core/dates.ts'
-import type { Intake } from '../../core/model.ts'
+import { addDays, type DateStr } from '../../shared/core/dates.ts'
+import type { Intake } from '../../app/model.ts'
 import { MEAL_NAMES } from './labels.ts'
 import { MAIN_MEALS, missedMeals } from './usual.ts'
 

@@ -4,8 +4,8 @@
  * Чистые функции; итог дня — `summary.ts`.
  */
 
-import { isDateStr, type DateStr } from '../../core/dates.ts'
-import type { Intake, Meal } from '../../core/model.ts'
+import { isDateStr, type DateStr } from '../../shared/core/dates.ts'
+import type { Intake, Meal } from '../../app/model.ts'
 import { MEALS } from './labels.ts'
 
 /**

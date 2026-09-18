@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { monthPeriod, yearPeriod } from '../core/dates.ts'
+import { monthPeriod, yearPeriod } from '../shared/core/dates.ts'
 import { exportSpan, monthChoices, monthTitle, yearChoices } from './period.ts'
 
 /** 14.09.2026 — понедельник. */

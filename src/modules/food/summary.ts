@@ -6,7 +6,7 @@
  * — одна порция, и итог называет, сколько таких.
  */
 
-import type { Category, Dish, Intake } from '../../core/model.ts'
+import type { Category, Dish, Intake } from '../../app/model.ts'
 import { sumKcal, type KcalSum } from './kcal.ts'
 
 /** Порций в записи; `assumed` — граммы без веса порции, посчитано одной (Р-18). */

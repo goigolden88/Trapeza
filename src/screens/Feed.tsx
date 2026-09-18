@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { days, plural } from '../core/dates.ts'
-import { feedDateText, feedHeading, filterFeed, groupFeed, type FeedItem } from '../core/feed.ts'
-import type { RecordKind } from '../core/model.ts'
-import { KIND_ORDER, KINDS } from '../registry.ts'
-import { Fold } from '../ui/Fold.tsx'
-import { monthFoldedByDefault } from '../ui/monthFold.ts'
-import { useFeed } from './useFeed.ts'
+import { days, plural } from '../shared/core/dates.ts'
+import { feedDateText, feedHeading, filterFeed, groupFeed, type FeedItem } from '../shared/core/feed.ts'
+import type { RecordKind } from '../app/model.ts'
+import { feedItems, KIND_ORDER, KINDS, kindLabel } from '../registry.ts'
+import { Fold } from '../shared/ui/Fold.tsx'
+import { monthFoldedByDefault } from '../shared/ui/monthFold.ts'
+import { useFeed } from '../shared/screens/useFeed.ts'
 
 /**
  * Лента `#/feed`: дни учёта одной хроникой, новые сверху, с поиском.
@@ -24,7 +24,7 @@ import { useFeed } from './useFeed.ts'
 const DAYS_OF: [string, string, string] = ['дня', 'дней', 'дней']
 
 export function Feed() {
-  const feed = useFeed()
+  const feed = useFeed(feedItems)
   const [kind, setKind] = useState<RecordKind | null>(null)
   const [query, setQuery] = useState('')
 
@@ -49,7 +49,7 @@ export function Feed() {
         <span className="feed__title">{item.title}</span>
         {item.detail && <span className="feed__detail muted">{item.detail}</span>}
       </span>
-      {kindShown && <span className="feed__kind muted">{KINDS[item.kind].label}</span>}
+      {kindShown && <span className="feed__kind muted">{kindLabel(item.kind)}</span>}
       {item.link && (
         <span className="feed__go muted" aria-hidden="true">
           ›

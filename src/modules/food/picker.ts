@@ -5,8 +5,8 @@
  * Чистые функции. Порядок внутри — частота Р-17 от просматриваемого дня.
  */
 
-import type { DateStr } from '../../core/dates.ts'
-import type { Category, Dish, Intake, Meal } from '../../core/model.ts'
+import type { DateStr } from '../../shared/core/dates.ts'
+import type { Category, Dish, Intake, Meal } from '../../app/model.ts'
 import { sortCategories } from './catalog.ts'
 import { cleanName, findByName, normName } from './names.ts'
 import { byFrequency, mealFrequency } from './repeat.ts'

@@ -5,8 +5,8 @@
  * (Р-01); нормы — `norms.ts`.
  */
 
-import { inPeriod, isDateStr, periodDays, plural, weekPeriod, weekStart, type DateStr, type Period } from '../../core/dates.ts'
-import type { Category, Dish, Intake, Meal } from '../../core/model.ts'
+import { inPeriod, isDateStr, periodDays, plural, weekPeriod, weekStart, type DateStr, type Period } from '../../shared/core/dates.ts'
+import type { Category, Dish, Intake, Meal } from '../../app/model.ts'
 import { viewedDay } from './day.ts'
 import { formatKcal, type KcalSum } from './kcal.ts'
 import { MEALS } from './labels.ts'

@@ -1,34 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CHANGES } from '../changes.ts'
-import { db } from '../core/db.ts'
-import { today } from '../core/dates.ts'
-import { SCHEMA_VERSION, SYNCED_STORES } from '../core/model.ts'
-import type { RecordKind, SyncedStore } from '../core/model.ts'
-import { KIND_ORDER, KINDS, markdownExport } from '../registry.ts'
-import {
-  checkReminder,
-  disableReminders,
-  enableReminders,
-  readWakes,
-  readWindow,
-  reminderStatus,
-  saveWindow,
-  type ReminderStatus,
-  type ReminderWindow,
-  type RemindResult,
-  type Wake,
-} from '../notify.ts'
-import { backupNote, backupSummary } from '../ui/backup.ts'
-import { Fold } from '../ui/Fold.tsx'
-import { InstallNote } from '../ui/Install.tsx'
-import { ReportBug } from '../ui/Report.tsx'
-import { SyncSettings } from '../ui/SyncSettings.tsx'
-import { useSyncStatus } from '../ui/useSync.ts'
-import { isEmptyBase } from './firstRun.ts'
-import { ImportRecords } from './ImportRecords.tsx'
+import { db } from '../app/core.ts'
+import { today } from '../shared/core/dates.ts'
+import { SCHEMA_VERSION, SYNCED_STORES } from '../app/model.ts'
+import type { RecordKind, SyncedStore } from '../app/model.ts'
+import { config } from '../app/config.ts'
+import { importPrompt, KIND_ORDER, KINDS, markdownExport, planImport } from '../registry.ts'
+import { reminders } from '../notify.ts'
+import type { ReminderStatus, ReminderWindow, RemindResult, Wake } from '../shared/notify.ts'
+import { backupNote, backupSummary } from '../shared/ui/backup.ts'
+import { Fold } from '../shared/ui/Fold.tsx'
+import { InstallNote } from '../shared/ui/Install.tsx'
+import { ReportBug } from '../shared/ui/Report.tsx'
+import { SyncSettings } from '../shared/ui/SyncSettings.tsx'
+import { useSyncStatus } from '../shared/ui/useSync.ts'
+import { isEmptyBase } from '../shared/screens/firstRun.ts'
+import { ImportRecords } from '../shared/screens/ImportRecords.tsx'
 import { exportSpan, monthChoices, monthTitle, yearChoices } from './period.ts'
 import { useRecordDates } from './useRecordDates.ts'
-import { ChangeList } from './WhatsNew.tsx'
+import { ChangeList } from '../shared/screens/WhatsNew.tsx'
 
 const LABELS: Record<SyncedStore, string> = {
   categories: 'Категории',
@@ -161,18 +151,18 @@ function Reminders() {
   const [note, setNote] = useState('')
 
   useEffect(() => {
-    void reminderStatus()
+    void reminders.reminderStatus()
       .then(setStatus)
       .catch(() => setStatus('unsupported'))
-    void readWindow().then(setHours)
-    void readWakes()
+    void reminders.readWindow().then(setHours)
+    void reminders.readWakes()
       .then(setWakes)
       .catch(() => setWakes([]))
   }, [])
 
   async function pickHours(next: ReminderWindow) {
     setHours(next)
-    await saveWindow(next)
+    await reminders.saveWindow(next)
   }
 
   async function act(action: () => Promise<void>) {
@@ -209,7 +199,7 @@ function Reminders() {
                 type="button"
                 className="btn"
                 disabled={busy}
-                onClick={() => void act(async () => setStatus(await enableReminders()))}
+                onClick={() => void act(async () => setStatus(await reminders.enableReminders()))}
               >
                 Включить напоминания
               </button>
@@ -221,7 +211,7 @@ function Reminders() {
                 disabled={busy}
                 onClick={() =>
                   void act(async () => {
-                    await disableReminders()
+                    await reminders.disableReminders()
                     setStatus('off')
                   })
                 }
@@ -234,7 +224,7 @@ function Reminders() {
                 type="button"
                 className="btn"
                 disabled={busy}
-                onClick={() => void act(async () => setNote(CHECK_TEXT[await checkReminder()]))}
+                onClick={() => void act(async () => setNote(CHECK_TEXT[await reminders.checkReminder()]))}
               >
                 Проверить сейчас
               </button>
@@ -372,7 +362,7 @@ function About({ state }: { state: State }) {
       <InstallNote
         empty={
           state.status !== 'ready' ||
-          isEmptyBase(Object.fromEntries(state.rows.map((row) => [row.store, row.live])))
+          isEmptyBase(Object.fromEntries(state.rows.map((row) => [row.store, row.live])), config.stores)
         }
       />
 
@@ -604,7 +594,21 @@ function DataTransfer({ onChanged }: { onChanged: () => Promise<void> }) {
       </Fold>
 
       <Fold id="settings:transfer:import" title="Импорт записей" sub folded>
-        <ImportRecords onChanged={onChanged} />
+        <ImportRecords
+          planImport={planImport}
+          importPrompt={importPrompt}
+          intro={
+            <>
+              <p className="muted">Блюда, категории и записи еды из таблиц, заметок и других сервисов.</p>
+              {/* Р-21: у записей id случайные, и одна история на двух устройствах до обмена раздвоится. */}
+              <p className="muted">
+                Записи еды загружай на одном устройстве — остальные получат их синхронизацией. Блюда и
+                категории можно на любом: одноимённые сольются.
+              </p>
+            </>
+          }
+          onChanged={onChanged}
+        />
       </Fold>
 
       {/* .txt — копия, отправленная через «Поделиться» (см. deliver). */}

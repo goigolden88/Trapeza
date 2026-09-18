@@ -1,15 +1,15 @@
-import { days, plural, timeSpan } from '../core/dates.ts'
-import { QUIET_MS, RETRY_MS } from '../core/sync.ts'
+import { days, plural, timeSpan } from '../shared/core/dates.ts'
+import { QUIET_MS, RETRY_MS } from '../shared/core/sync.ts'
 import { hourText, monthsText, shareText } from '../modules/food/labels.ts'
 import { DEFAULT_MEAL_HOURS } from '../modules/food/meals.ts'
 import { MAX_LIMIT_DAYS, MIN_LIMIT_DAYS, MIN_NORM_DAYS, NORM_BARS_WEEKS, NORM_MIN_WEEKS, WEEK_DAYS } from '../modules/food/norms.ts'
 import { FREQUENT_MAX } from '../modules/food/picker.ts'
 import { FREQUENCY_MONTHS } from '../modules/food/repeat.ts'
 import { USUAL_MEALS, USUAL_SHARE } from '../modules/food/usual.ts'
-import { DEFAULT_WINDOW } from '../notify.ts'
-import { STALE_DAYS as BACKUP_DAYS } from '../ui/backup.ts'
-import { Fold } from '../ui/Fold.tsx'
-import { WARN_DAYS } from '../ui/SyncSettings.tsx'
+import { DEFAULT_WINDOW } from '../shared/notify.ts'
+import { STALE_DAYS as BACKUP_DAYS } from '../shared/ui/backup.ts'
+import { Fold } from '../shared/ui/Fold.tsx'
+import { WARN_DAYS } from '../shared/ui/SyncSettings.tsx'
 
 /** «7 дней», «6 дней», «1 дня» — после «до». */
 function daysOf(count: number): string {

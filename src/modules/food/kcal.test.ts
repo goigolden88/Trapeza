@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Dish, Intake } from '../../core/model.ts'
+import type { Dish, Intake } from '../../app/model.ts'
 import { dayMeals, tapDish, viewedDay } from './day.ts'
 import { formatKcal, intakeKcal, kcalText, portionKcal, sumKcal } from './kcal.ts'
 import { currentMeal, DEFAULT_MEAL_HOURS, mealByHour, readMealHours, startedMeals } from './meals.ts'

@@ -6,8 +6,8 @@
  * с причиной» проверяется тестами, а не глазами.
  */
 
-import { numberOf } from '../../core/importing.ts'
-import type { Category, Dish, Intake, Meal } from '../../core/model.ts'
+import { numberOf } from '../../shared/core/importing.ts'
+import type { Category, Dish, Intake, Meal } from '../../app/model.ts'
 import { timeOf } from './import.ts'
 import { portions as portionsText } from './labels.ts'
 import { cleanName, nameProblem, type NameProblem } from './names.ts'

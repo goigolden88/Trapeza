@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { db } from '../../core/db.ts'
-import type { SyncedStore } from '../../core/model.ts'
+import { db } from '../../app/core.ts'
+import type { SyncedStore } from '../../app/model.ts'
 import { reconcilePlan, type CatalogData, type CatalogPlan } from './catalog.ts'
 
 /** Хранилища еды — все синхронизируемые. */

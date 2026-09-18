@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { monthPeriod, inPeriod } from '../../core/dates.ts'
-import { SYNCED_STORES, type Norm } from '../../core/model.ts'
+import { monthPeriod, inPeriod } from '../../shared/core/dates.ts'
+import { SYNCED_STORES, type Norm } from '../../app/model.ts'
 import { indexDays, normHistory } from './norms.ts'
 import { planImport, type Data } from '../../registry.ts'
 import { summarize } from './summary.ts'

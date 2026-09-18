@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Category, Dish, Intake } from '../../core/model.ts'
+import type { Category, Dish, Intake } from '../../app/model.ts'
 import { dayHref, loggedText, viewedWeek, weekKcalText, weekRoute, weekSummary } from './week.ts'
 
 const at = '2026-09-17T10:00:00.000Z'

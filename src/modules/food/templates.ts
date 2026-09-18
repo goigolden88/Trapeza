@@ -10,9 +10,9 @@
  * «Делу Время» (их Р-39, Р-75).
  */
 
-import { nowIso, type DateStr } from '../../core/dates.ts'
-import { ulid } from '../../core/id.ts'
-import type { Dish, Intake, Meal, Template } from '../../core/model.ts'
+import { nowIso, type DateStr } from '../../shared/core/dates.ts'
+import { ulid } from '../../shared/core/id.ts'
+import type { Dish, Intake, Meal, Template } from '../../app/model.ts'
 import { amountText } from './forms.ts'
 import { MEAL_NAMES, MEALS } from './labels.ts'
 import { normName } from './names.ts'
