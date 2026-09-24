@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createDb } from '../shared/core/db.ts'
 import { createLayout } from '../shared/core/layout.ts'
 import { LOCAL_STORES } from '../shared/core/model.ts'
+import { buildSummary, checkSummary } from '../shared/core/summary.ts'
+import { summary } from '../modules/food/digest.ts'
 import { config } from './config.ts'
 import { SCHEMA_VERSION, SYNCED_STORES, type Intake, type StoreRecord, type SyncedStore } from './model.ts'
 
@@ -114,6 +116,20 @@ describe('раскладка репозитория данных', () => {
     for (const path of ['categories.json', 'dishes.json', 'templates.json', 'norms.json', 'intake/ГГГГ-ММ.json']) {
       expect(text).toContain(`\`${path}\``)
     }
+  })
+})
+
+describe('срез итогов — summary.json (Р-55)', () => {
+  it('конфиг отдаёт ядру функцию среза «Трапезы»', () => {
+    expect(config.summary).toBe(summary)
+  })
+
+  it('срез на своих данных проходит проверку формы ядра', () => {
+    const data = withIntake([intake('a', '2026-09-07'), intake('b', '2026-09-08'), intake('c', '2026-02-30')])
+    const day = '2026-09-09'
+    const checked = checkSummary(buildSummary(summary(data, day), data, day))
+    expect(checked.computedOn).toBe(day)
+    expect(checked.periods).toHaveLength(4)
   })
 })
 

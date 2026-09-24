@@ -9,6 +9,7 @@
  */
 
 import type { AppConfig } from '../shared/core/model.ts'
+import { summary } from '../modules/food/digest.ts'
 import { migrations, SCHEMA_VERSION, SYNCED_STORES, type StoreRecord } from './model.ts'
 
 export const config: AppConfig<StoreRecord> = {
@@ -66,6 +67,10 @@ export const config: AppConfig<StoreRecord> = {
       'неизвестен день, не пиши, а назови в списке после JSON.',
     'Строки и столбцы итогов, проценты и суммы за месяц не переноси: приложение посчитает их само.',
   ],
+
+  // Срез итогов для метаприложения — `summary.json` в репозитории данных
+  // (Р-55; Я-16 «FamilyCore»). Пишет проход синхронизации, приложение не читает.
+  summary,
 
   about: {
     data: 'учёт еды: что съедено, в каком приёме, блюда и нормы недели',

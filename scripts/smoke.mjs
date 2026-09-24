@@ -1758,6 +1758,17 @@ async function syncScenario() {
     repoRecords('intake/2026-02.json')?.length === 4,
     `в intake/2026-02.json записей ${repoRecords('intake/2026-02.json')?.length}`,
   )
+  // Срез итогов для метаприложения (Р-55): пишет проход ядра функцией конфига.
+  // Форму целиком проверяют тесты `checkSummary`; здесь — что файл доехал.
+  const digest = repoRecords('summary.json')
+  check(
+    'срез итогов summary.json уехал тем же коммитом: форма 1, четыре отрезка, месяцы — not-provided',
+    digest?.format === 1 &&
+      digest.periods?.length === 4 &&
+      digest.periods.slice(2).every((period) => period.metrics?.unknown === 'not-provided') &&
+      Array.isArray(digest.attention),
+    JSON.stringify(digest)?.slice(0, 120) ?? 'файла нет',
+  )
 
   const quiet = await syncNow()
   check('повтор без правок — ни одного коммита', commitCount() === 2 && has(quiet, 'Всё и так совпадает'), `коммитов ${commitCount()}`)
