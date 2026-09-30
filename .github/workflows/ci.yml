@@ -61,6 +61,10 @@ jobs:
       # запрет на этой одноразовой машине, а не флагом --no-sandbox в коде.
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
+      # Прогрев: первый запуск Chrome на чистой машине — около 6 с, а прогон
+      # ждёт порт отладки 10 с. Без прогрева он падает не из-за кода.
+      - run: timeout 30 google-chrome --headless=new --disable-gpu --dump-dom about:blank > /dev/null 2>&1 || true
+
       # Браузер — /usr/bin/google-chrome, он есть на ubuntu-latest.
       # Прогон сам собирает приложение.
       - run: npm run smoke
