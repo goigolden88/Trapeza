@@ -683,8 +683,12 @@ async function scenario() {
   await reload()
   await settle()
   check('«Понятно» убирает приветствие и после перезапуска', !has(await screen(), 'С чего начать'))
-  const database = await run(`indexedDB.databases().then((list) => list.map((each) => each.name).join(', '))`)
-  check('база называется trapeza — Р-10', database === 'trapeza', `базы: ${database}`)
+  const database = await run(`indexedDB.databases().then((list) => list.map((each) => each.name).sort().join(', '))`)
+  check(
+    'база данных называется trapeza, рядом — общая база семьи family (Р-10, Я-35 «FamilyCore»)',
+    database === 'family, trapeza',
+    `базы: ${database}`,
+  )
 
   // ─ Ярлык: адрес с ?go=, а не с #.
   await open(`${APP}?go=write`)
@@ -1790,10 +1794,13 @@ async function syncScenario() {
   await sleep(1500)
   const access = await screen()
   check(
-    '«Проверить доступ»: репозиторий найден, приватный, запись разрешена; срок токена — из ответа',
-    has(access, `Репозиторий ${REPO} найден, приватный, запись разрешена`) &&
+    '«Проверить доступ»: репозиторий найден, приватный, права токена не обещаются (Я-28); срок токена — из ответа',
+    has(access, `Репозиторий ${REPO} найден, приватный.`) &&
+      has(access, 'Права токена GitHub не сообщает') &&
+      !has(access, 'запись разрешена') &&
       has(access, 'Токен действует до') &&
-      has(access, 'Сохранён в этом браузере'),
+      has(access, 'Сохранён') &&
+      has(access, 'Один для всех приложений семьи на этом устройстве'),
     `${line(access, 'Репозиторий')}; ${line(access, 'Токен действует')}`,
   )
 
