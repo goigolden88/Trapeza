@@ -289,15 +289,76 @@ async function tapChip(name) {
   await act(`${find}?.click()`)
 }
 
+/** Сколько ждать появления проверяемого, мс. Дольше — это уже поломка, а не медленный сервер. */
+const WAIT_MS = 20000
+
+/**
+ * Ждёт, пока выражение на странице не станет истинным, но не дольше `WAIT_MS`.
+ *
+ * Фиксированная пауза после загрузки ломается на медленных серверах CI:
+ * экран появляется позже, и проверка читает ещё пустую страницу. Здесь
+ * ждут самого проверяемого. Ошибка выполнения посреди перезагрузки
+ * (контекст страницы ушёл) — не конец: опрос продолжается.
+ *
+ * Истечение срока валит прогон отдельной ошибкой: иначе проверка вида
+ * «этого текста нет» прошла бы ложно на странице, которая так и не открылась.
+ */
+async function waitFor(expression, what) {
+  const until = Date.now() + WAIT_MS
+  while (Date.now() < until) {
+    const result = await send('Runtime.evaluate', { expression, returnByValue: true })
+    if (result?.result?.value === true) return true
+    await sleep(100)
+  }
+  problems.push(`не дождался за ${WAIT_MS / 1000} с: ${what}`)
+  return false
+}
+
+/** Приложение нарисовало «Сегодня» с данными: приёмы выводятся только после чтения базы. */
+const TODAY_READY = `document.querySelector('.meal') !== null`
+
+/**
+ * Ждёт, пока откроется новая страница: старая отдаёт метку `__smokeOld`,
+ * у новой её нет. Затем — загрузка закончена, в корне есть текст и,
+ * если задано, выполняется `until` (выражение на странице).
+ */
+async function loaded(until = 'true', what = 'страница') {
+  await waitFor(
+    `!window.__smokeOld && document.readyState === 'complete' &&
+      (document.querySelector('#root')?.innerText ?? '').trim() !== '' && (${until})`,
+    what,
+  )
+}
+
+/** Помечает текущую страницу, чтобы `loaded` отличил её от новой. */
+const markOld = () => send('Runtime.evaluate', { expression: 'window.__smokeOld = true' })
+
 /**
  * Полная загрузка страницы по адресу — как её открывает Android
  * из ярлыка. Адрес должен отличаться от текущего не только
  * хешем: иначе браузер сменит хеш без загрузки, и приём проверен не будет.
+ * Возвращает управление, когда виден `until` (по умолчанию — «Сегодня» с приёмами).
  */
-async function open(url) {
+async function open(url, until = TODAY_READY, what = 'приёмы на «Сегодня»') {
+  await markOld()
   await send('Page.navigate', { url })
-  await sleep(2000)
+  await loaded(until, what)
 }
+
+/** Перезагрузка страницы с ожиданием того же, что у `open`. */
+async function reload(until = TODAY_READY, what = 'приёмы на «Сегодня»') {
+  await markOld()
+  await send('Page.reload')
+  await loaded(until, what)
+}
+
+/**
+ * Короткая выдержка для проверок «этого нет на экране»: у такого признака
+ * положительного знака нет, и приёмы на экране ещё не значат, что
+ * приветствие и «Что нового» дочитали свои ключи из базы. Они читают её
+ * в тот же момент, что и приёмы, — хватает малого запаса, не секунд.
+ */
+const settle = () => sleep(300)
 
 /** Сеть вкл/выкл — для проверки работы из кеша service worker. */
 async function offline(on) {
@@ -591,7 +652,11 @@ async function scenario() {
   check('«Поделиться» не объявлено', manifest.share_target === undefined, JSON.stringify(manifest.share_target))
 
   // ─ Первый запуск.
-  await open(APP)
+  await open(
+    APP,
+    `${TODAY_READY} && document.querySelector('#root').innerText.toLowerCase().includes('с чего начать')`,
+    'приветствие на пустой базе',
+  )
   const start = await screen()
   check(
     '«Сегодня» открылось; пустая база ведёт к блюдам и импорту',
@@ -615,8 +680,8 @@ async function scenario() {
   )
   await act(`byText('button', 'Понятно')?.click()`)
   await sleep(400)
-  await send('Page.reload')
-  await sleep(2000)
+  await reload()
+  await settle()
   check('«Понятно» убирает приветствие и после перезапуска', !has(await screen(), 'С чего начать'))
   const database = await run(`indexedDB.databases().then((list) => list.map((each) => each.name).join(', '))`)
   check('база называется trapeza — Р-10', database === 'trapeza', `базы: ${database}`)
@@ -1093,13 +1158,15 @@ async function helpScenario() {
     }
   })`)
   await go('/')
-  await send('Page.reload')
-  await sleep(2000)
+  await reload(
+    `${TODAY_READY} && document.querySelector('#root').innerText.toLowerCase().includes('что нового')`,
+    '«Что нового» на копии без прочитанного',
+  )
   const news = await screen()
   await act(`byText('button', 'Понятно')?.click()`)
   await sleep(500)
-  await send('Page.reload')
-  await sleep(2000)
+  await reload()
+  await settle()
   const newsAfter = await screen()
   check(
     '«Что нового» — последняя запись на копии без прочитанного; «Понятно» убирает и после перезапуска',
@@ -1886,8 +1953,7 @@ async function dataScenario(file) {
   await send('Page.enable')
   await send('DOM.enable')
 
-  await send('Page.navigate', { url: APP })
-  await sleep(2000)
+  await open(APP)
 
   await go('/settings')
   await unfold('Экспорт и импорт')
