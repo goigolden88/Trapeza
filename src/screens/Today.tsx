@@ -5,7 +5,7 @@ import { addDays, formatDate, formatDateLong, formatPeriod, nowIso, plural, week
 import { ulid } from '../shared/core/id.ts'
 import type { Category, Dish, Intake, Meal, Norm, Template } from '../app/model.ts'
 import { activeDishes, createDish } from '../modules/food/catalog.ts'
-import { dayMeals, tapDish, viewedDay } from '../modules/food/day.ts'
+import { clearMeal, dayMeals, tapDish, viewedDay } from '../modules/food/day.ts'
 import { amountText, intakeInput, readIntake, stepPortions, type IntakeInput } from '../modules/food/forms.ts'
 import { kcalText } from '../modules/food/kcal.ts'
 import { FORMS, formatNumber, MEAL_NAMES, MEALS, normCheckText, portions, touchText } from '../modules/food/labels.ts'
@@ -347,6 +347,7 @@ function MealBlock({
       {records.length > 0 && (
         <SaveTemplate kind={meal} records={records} templates={templates} dishes={dishes} save={save} onNote={onNote} />
       )}
+      {records.length > 0 && <ClearMeal meal={meal} day={day} intake={intake} dishes={dishes} save={save} onNote={onNote} />}
 
       {open && (
         <DishPicker
@@ -544,6 +545,45 @@ function Repeat({
   return (
     <button type="button" className="link-btn meal__repeat" onClick={() => void apply()}>
       Как {when}: {names}
+    </button>
+  )
+}
+
+/**
+ * «Очистить» приём: случайно записанное — разом, а не по одному блюду.
+ * С подтверждением, как удаление на «Блюдах»; блюда и шаблоны не трогаются.
+ */
+function ClearMeal({
+  meal,
+  day,
+  intake,
+  dishes,
+  save,
+  onNote,
+}: {
+  meal: Meal
+  day: DateStr
+  intake: Intake[]
+  dishes: ReadonlyMap<string, Dish>
+  save: Save
+  onNote: (text: string) => void
+}) {
+  const removed = clearMeal(intake, day, meal)
+  if (removed.length === 0) return null
+
+  const what = `${MEAL_NAMES[meal].toLowerCase()} за ${formatDateLong(day)}`
+  const count = `${removed.length} ${plural(removed.length, FORMS.dish)}`
+
+  async function apply() {
+    if (!window.confirm(`Очистить ${what}: ${count}? Блюда в справочнике и шаблоны останутся.`)) return
+    if (await save(() => db.putMany('intake', removed))) {
+      onNote(`${MEAL_NAMES[meal]} за ${formatDateLong(day)} очищен: ${count} — ${dishNames(removed, dishes)}`)
+    }
+  }
+
+  return (
+    <button type="button" className="link-btn meal__save" onClick={() => void apply()}>
+      Очистить
     </button>
   )
 }

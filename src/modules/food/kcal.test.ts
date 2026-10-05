@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Dish, Intake } from '../../app/model.ts'
-import { dayMeals, tapDish, viewedDay } from './day.ts'
+import { clearMeal, dayMeals, tapDish, viewedDay } from './day.ts'
 import { formatKcal, intakeKcal, kcalText, portionKcal, sumKcal } from './kcal.ts'
 import { currentMeal, DEFAULT_MEAL_HOURS, mealByHour, readMealHours, startedMeals } from './meals.ts'
 
@@ -106,6 +106,22 @@ describe('записи дня', () => {
     expect(meals.lunch).toEqual([])
     expect(meals.dinner).toEqual([])
     expect(meals.snack.map((each) => each.id)).toEqual(['03'])
+  })
+
+  it('«Очистить» снимает только живые записи этого приёма этого дня', () => {
+    const intake = [
+      record({ id: '01', meal: 'breakfast', portions: 2 }),
+      record({ id: '02', meal: 'breakfast', grams: 150 }),
+      record({ id: '03', meal: 'lunch' }),
+      record({ id: '04', meal: 'breakfast', date: '2026-02-04' }),
+      record({ id: '05', meal: 'breakfast', deleted: true }),
+    ]
+    expect(clearMeal(intake, '2026-02-03', 'breakfast')).toEqual([
+      record({ id: '01', meal: 'breakfast', portions: 2, deleted: true }),
+      record({ id: '02', meal: 'breakfast', grams: 150, deleted: true }),
+    ])
+    expect(clearMeal(intake, '2026-02-03', 'dinner')).toEqual([])
+    expect(intake[0]?.deleted).toBeUndefined()
   })
 })
 
