@@ -29,6 +29,17 @@ export function dayMeals(intake: readonly Intake[], day: DateStr): Record<Meal, 
 }
 
 /**
+ * «Очистить» приём: живые записи этого приёма этого дня с меткой `deleted` —
+ * то же мягкое удаление, что у `db.remove`, только одной записью в базу.
+ * Другие приёмы, другие дни и уже удалённые не попадают.
+ */
+export function clearMeal(intake: readonly Intake[], day: DateStr, meal: Meal): Intake[] {
+  return intake
+    .filter((record) => !record.deleted && record.date === day && record.meal === meal)
+    .map((record) => ({ ...record, deleted: true }))
+}
+
+/**
  * Тап по блюду в приёме (Р-02, Р-11): новая запись в одну порцию. Блюдо
  * в этом приёме этого дня уже есть — порция прибавляется к той записи:
  * одинаковые блюда одного приёма — одна запись с `portions`, тот же
