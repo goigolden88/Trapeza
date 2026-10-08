@@ -721,10 +721,12 @@ async function scenario() {
   await unfold('О приложении')
   const about = await screen()
   check(
-    'в «О приложении» — схема, сборка и пять хранилищ',
+    'в «О приложении» — схема, сборка и семь хранилищ',
     has(about, 'Версия схемы') &&
       has(about, 'Сборка') &&
-      ['Категории', 'Блюда', 'Шаблоны приёмов', 'Нормы недели', 'Записи еды'].every((label) => has(about, label)),
+      ['Категории', 'Блюда', 'Шаблоны приёмов', 'Нормы недели', 'Записи еды', 'Основные приёмы', 'Отметки «Не было»'].every(
+        (label) => has(about, label),
+      ),
     line(about, 'Записи еды'),
   )
   check(
@@ -750,9 +752,9 @@ async function scenario() {
   }
   const stores = Object.keys(snapshot?.data ?? {}).sort().join(', ')
   check(
-    'в файле копии — схема 1 и пять хранилищ, токена нет',
-    snapshot?.schemaVersion === 1 &&
-      stores === 'categories, dishes, intake, norms, templates' &&
+    'в файле копии — схема 2 и семь хранилищ, токена нет — Р-59',
+    snapshot?.schemaVersion === 2 &&
+      stores === 'categories, dishes, intake, meals, norms, skips, templates' &&
       !JSON.stringify(snapshot).includes('syncToken'),
     saved ? `${saved}: ${stores}` : `файла нет: ${readdirSync(profile).filter((name) => name.endsWith('.json')).join(', ')}`,
   )
@@ -1104,6 +1106,104 @@ async function scenario() {
   await markdownScenario()
   await helpScenario()
   await repeatScenario()
+  await skipScenario()
+}
+
+/**
+ * «Не было» на экране дня и основные приёмы (Р-59). После «Как обычно?»:
+ * отметка — на 10 марта, где других записей нет; вчерашний завтрак
+ * убирается, чтобы снятый в настройках приём было о чём не спрашивать.
+ */
+async function skipScenario() {
+  // ─ Задним числом, у пустого завтрака: причина, строка «Недели».
+  await go('/?day=2026-03-10')
+  await clickInMeal('Завтрак', 'Не было')
+  await sleep(400)
+  await act(`
+    set(document.querySelector('[name="skip-reason"]'), 'не успел')
+    byText('button', 'Готово')?.click()
+  `)
+  await sleep(800)
+  const marked = await mealSummary('Завтрак')
+  const markedButtons = await buttonsInMeal('Завтрак')
+  await go('/week?w=2026-03-10')
+  const week = (await screen()).replace(/ /g, ' ')
+  check(
+    '«Не было» у пустого завтрака прошлого дня, с причиной; «Неделя»: «Приёмов не было: 1» и под ней «вт, завтрак — не успел» — Р-59',
+    marked === '· не было — не успел' &&
+      markedButtons?.includes('Снять «Не было»') &&
+      /(?:^|\n)Приёмов не было: 1\n+вт, завтрак — не успел(?:\n|$)/.test(week),
+    `${marked}; ${JSON.stringify(markedButtons)}; ${line(week, 'Приёмов не было')} / ${line(week, 'вт, завтрак')}`,
+  )
+
+  // ─ Еда в приёме с отметкой снимает её сама: значит, всё-таки ел.
+  await go('/?day=2026-03-10')
+  await openMeal('Завтрак')
+  await tapChip('Щи')
+  await sleep(1500)
+  const eaten = await mealSummary('Завтрак')
+  await go('/week?w=2026-03-10')
+  const lifted = await screen()
+  check(
+    'записанная в приём еда снимает «Не было» сама — Р-59',
+    eaten === '· 1 блюдо' && !has(lifted, 'Приёмов не было'),
+    `${eaten}; ${line(lifted, 'Приёмов не было') || 'строки «Приёмов не было» нет'}`,
+  )
+
+  // ─ Основные приёмы: вчерашний завтрак убран — «Как обычно?» о нём
+  // спрашивает; снятый в настройках — молчит, и напоминание тоже.
+  const yesterday = await run(`(() => {
+    const d = new Date(); d.setDate(d.getDate() - 1)
+    const pad = (n) => String(n).padStart(2, '0')
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+  })()`)
+  await go(`/?day=${yesterday}`)
+  for (const name of ['Щи', 'Компот']) {
+    await act(`document.querySelector('[aria-label="Поправить: ${name}"]')?.click()`)
+    await sleep(400)
+    await act(`byText('button', 'Удалить')?.click()`)
+    await sleep(800)
+  }
+  const breakfastAsked = `[...document.querySelectorAll('.usual__what')].some((el) => el.textContent.trim() === 'Вчера, завтрак — не записан')`
+  await go('/')
+  const askedBefore = await run(breakfastAsked)
+
+  await go('/settings')
+  await unfold('Основные приёмы')
+  await act(`document.querySelector('[name="main-meal"][value="breakfast"]')?.click()`)
+  await sleep(800)
+  const mainsSummary = await run(`[...document.querySelectorAll('.fold__btn')]
+    .find((el) => el.textContent.trim() === 'Основные приёмы')
+    ?.parentElement.querySelector('.fold__summary')?.textContent.trim() ?? ''`)
+  await unfold('Напоминания')
+  await act(`byText('button', 'Проверить сейчас')?.click()`)
+  await sleep(1500)
+  const remind = await screen()
+  await go('/')
+  await settle()
+  const askedAfter = await run(breakfastAsked)
+  check(
+    'снят «Завтрак» в «Основных приёмах» — «Как обычно?» и напоминание о нём молчат — Р-59',
+    askedBefore === true &&
+      mainsSummary.includes('обед, ужин') &&
+      !mainsSummary.includes('завтрак') &&
+      line(remind, 'Напоминать не о чем').trim().startsWith('Напоминать не о чем') &&
+      askedAfter === false,
+    `спрошен до ${askedBefore}; итог «${mainsSummary}»; ${line(remind, 'Напоминать') || line(remind, 'Уведомление')}; спрошен после ${askedAfter}`,
+  )
+
+  // Записать в снятый приём можно как раньше; «Не было» у него нет.
+  await go(`/?day=${yesterday}`)
+  const noSkip = !(await buttonsInMeal('Завтрак'))?.includes('Не было')
+  await openMeal('Завтрак')
+  await tapChip('Компот')
+  await sleep(800)
+  const written = await mealSummary('Завтрак')
+  check(
+    'в снятый завтрак еда записывается как раньше, кнопки «Не было» у него нет — Р-59',
+    noSkip && written === '· 1 блюдо',
+    `«Не было» ${noSkip ? 'нет' : 'есть'}; ${written}`,
+  )
 }
 
 /** Значение числовой константы из исходника: справка обязана сказать ровно его. */
@@ -1310,6 +1410,11 @@ const inMeal = (meal) => `[...document.querySelectorAll('.meal')]
 const clickInMeal = (meal, label) =>
   act(`[...(${inMeal(meal)} ?? [])].find((el) => el.textContent.trim() === ${JSON.stringify(label)})?.click()`)
 const buttonsInMeal = (meal) => run(`[...(${inMeal(meal)} ?? [])].map((el) => el.textContent.trim())`)
+/** Итог у заголовка приёма: «· 1 блюдо», «· не было — не успел». */
+const mealSummary = (meal) =>
+  run(`[...document.querySelectorAll('.meal')]
+    .find((el) => el.querySelector('.fold__btn')?.textContent.trim() === ${JSON.stringify(meal)})
+    ?.querySelector('.fold__summary')?.textContent.trim() ?? ''`)
 
 /** Открывает приём на прошлом дне, если его список закрыт. */
 async function openMeal(meal) {
@@ -1521,7 +1626,8 @@ async function repeatScenario() {
   )
 
   // «Не было»: вчерашний ужин удалён — вопрос вернулся; отметка убирает его,
-  // и после перезагрузки он не возвращается.
+  // и после перезагрузки он не возвращается. Причина — по желанию: сразу
+  // «Готово» с пустым полем (Р-59).
   await go(`/?day=${yesterday}`)
   await act(`document.querySelector('[aria-label="Поправить: Торт"]')?.click()`)
   await sleep(400)
@@ -1530,15 +1636,18 @@ async function repeatScenario() {
   await go('/')
   const dinnerRow = `[...document.querySelectorAll('.usual__row')].find((el) => el.querySelector('.usual__what')?.textContent.trim() === 'Вчера, ужин — не записан')`
   const asked = await run(`${dinnerRow} !== undefined`)
-  await act(`${dinnerRow}?.querySelectorAll('button')[1]?.click()`)
+  await act(`[...(${dinnerRow}?.querySelectorAll('button') ?? [])].find((el) => el.textContent.trim() === 'Не было')?.click()`)
+  await sleep(400)
+  const reasonField = await run(`${dinnerRow}?.querySelector('[name="skip-reason"]') != null`)
+  await act(`[...(${dinnerRow}?.querySelectorAll('button') ?? [])].find((el) => el.textContent.trim() === 'Готово')?.click()`)
   await sleep(800)
   const skipNote = await status()
   await open(APP)
   const afterSkip = await run(`${dinnerRow} !== undefined`)
   check(
-    '«Не было» убирает приём из вопроса и переживает перезагрузку — Р-29',
-    asked === true && skipNote === 'Вчера, ужин — не было' && afterSkip === false,
-    `спрошен ${asked}; «${skipNote}»; после перезагрузки ${afterSkip ? 'снова спрошен' : 'нет'}`,
+    '«Не было» — поле причины по желанию, «Готово» без неё; приём уходит из вопроса и после перезагрузки — Р-29, Р-59',
+    asked === true && reasonField === true && skipNote === 'Вчера, ужин — не было' && afterSkip === false,
+    `спрошен ${asked}; поле причины ${reasonField}; «${skipNote}»; после перезагрузки ${afterSkip ? 'снова спрошен' : 'нет'}`,
   )
 
   // ─ Напоминание (Р-30). Фоновую проверку браузер вне установленного
@@ -1847,7 +1956,8 @@ async function syncScenario() {
   const quiet = await syncNow()
   check('повтор без правок — ни одного коммита', commitCount() === 2 && has(quiet, 'Всё и так совпадает'), `коммитов ${commitCount()}`)
 
-  // ─ Другое устройство: свой «Борщ» с другим id и ужин с ним (Р-12).
+  // ─ Другое устройство: свой «Борщ» с другим id и ужин с ним (Р-12);
+  // завтрака в тот день не было — отметка с причиной (Р-59).
   const later = new Date(Date.now() + 60_000).toISOString()
   commitFromOtherDevice({
     'dishes.json': [
@@ -1858,9 +1968,10 @@ async function syncScenario() {
       ...repoRecords('intake/2026-02.json'),
       { id: 'phone-intake', updatedAt: later, date: '2026-02-06', meal: 'dinner', dishId: 'dish:борщ:phone' },
     ],
+    'skips/2026-02.json': [{ id: 'phone-skip', updatedAt: later, date: '2026-02-06', meal: 'breakfast', reason: 'не успел' }],
   })
   const pulled = await syncNow()
-  check('коммит другого устройства влит', has(pulled, 'получено записей 2'), line(pulled, 'получено'))
+  check('коммит другого устройства влит', has(pulled, 'получено записей 3'), line(pulled, 'получено'))
 
   // Слияние ждёт секунду тишины, его запись уезжает сама через пять.
   await sleep(8000)
@@ -1883,6 +1994,12 @@ async function syncScenario() {
   await go('/?day=2026-02-06')
   const evening = await screen()
   check('ужин другого устройства — в своём дне', has(evening, 'Борщ') && has(evening, '1 блюдо'), line(evening, 'Борщ'))
+  const phoneSkip = await mealSummary('Завтрак')
+  check(
+    '«Не было» с другого устройства — у завтрака того дня, с причиной — Р-59',
+    phoneSkip === '· не было — не успел' && (await buttonsInMeal('Завтрак'))?.includes('Снять «Не было»'),
+    `${phoneSkip}; ${JSON.stringify(await buttonsInMeal('Завтрак'))}`,
+  )
 
   // ─ Токен не принят: причина словами, точка на шестерёнке красная.
   github.reject = true
