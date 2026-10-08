@@ -48,8 +48,8 @@ const intake: Intake[] = [
   eaten('2026-02-10', 'lunch', 'Торт'),
 ]
 
-const data: DigestData = { categories, dishes, templates: [], norms, intake }
-const empty: DigestData = { categories: [], dishes: [], templates: [], norms: [], intake: [] }
+const data: DigestData = { categories, dishes, templates: [], norms, intake, meals: [], skips: [] }
+const empty: DigestData = { categories: [], dishes: [], templates: [], norms: [], intake: [], meals: [], skips: [] }
 
 function metricsOf(period: PeriodSummary | undefined): Metric[] {
   if (!period || !Array.isArray(period.metrics)) throw new Error('у отрезка нет показателей')
@@ -177,37 +177,65 @@ describe('нормы — вердикт экрана «Неделя» (Р-24, Р
   })
 })
 
-describe('«требует внимания» — вчерашние пропуски по записям (Р-55, Я-19 п. 2)', () => {
+describe('«требует внимания» — вчерашние пропуски (Р-55, Я-19 п. 2; Р-59)', () => {
+  const only = (records: Intake[], more: Partial<Pick<DigestData, 'skips' | 'meals'>> = {}) => ({
+    intake: records,
+    skips: [],
+    meals: [],
+    ...more,
+  })
+
   it('вчера без ужина — один приём, день — вчера, ссылка — день на «Сегодня»', () => {
-    expect(attentionOf(intake, DAY)).toEqual([
+    expect(attentionOf(only(intake), DAY)).toEqual([
       {
         key: 'meals.missed',
         label: 'Приёмы без записи',
         count: 1,
         day: '2026-02-10',
         link: '/?day=2026-02-10',
-        basis: 'По записям нет: ужин. Отметки «Не было» живут на устройстве и не учтены',
+        basis: 'Нет ни записи, ни отметки «Не было»: ужин',
       },
     ])
   })
 
   it('пустой вчерашний день — все три основных приёма', () => {
-    expect(attentionOf(intake, '2026-03-04')[0]).toMatchObject({ count: 3, day: '2026-03-03' })
+    expect(attentionOf(only(intake), '2026-03-04')[0]).toMatchObject({ count: 3, day: '2026-03-03' })
   })
 
   it('перекус не в счёт; все три записаны — пункта нет', () => {
     const main: Intake['meal'][] = ['breakfast', 'lunch', 'dinner']
     const full = [eaten(DAY, 'snack', 'Сырок'), ...main.map((meal) => eaten('2026-02-10', meal, 'Щи'))]
-    expect(attentionOf(full, DAY)).toEqual([])
+    expect(attentionOf(only(full), DAY)).toEqual([])
   })
 
   it('до первой записи вообще — пункта нет: учёт не начат', () => {
-    expect(attentionOf(intake, '2026-02-02')).toEqual([])
-    expect(attentionOf([], DAY)).toEqual([])
+    expect(attentionOf(only(intake), '2026-02-02')).toEqual([])
+    expect(attentionOf(only([]), DAY)).toEqual([])
   })
 
   it('удалённая запись приём не закрывает', () => {
     const gone = [eaten('2026-02-09', 'lunch', 'Щи'), eaten('2026-02-10', 'breakfast', 'Щи', { deleted: true })]
-    expect(attentionOf(gone, DAY)[0]?.count).toBe(3)
+    expect(attentionOf(only(gone), DAY)[0]?.count).toBe(3)
+  })
+
+  it('«Не было» — не пропуск; снятая отметка — снова пропуск — Р-59', () => {
+    const skip = { id: '01SKIP', updatedAt: at, date: '2026-02-10', meal: 'dinner' as const, reason: 'не успел' }
+    expect(attentionOf(only(intake, { skips: [skip] }), DAY)).toEqual([])
+    expect(attentionOf(only(intake, { skips: [{ ...skip, deleted: true }] }), DAY)[0]?.count).toBe(1)
+  })
+
+  it('снятый в «Основных приёмах» — не пропуск, основание называет основные — Р-59', () => {
+    const lunchOnly = [{ id: 'meals:main', updatedAt: at, meals: ['lunch' as const] }]
+    expect(attentionOf(only(intake, { meals: lunchOnly }), DAY)).toEqual([])
+    const noBreakfast = [{ id: 'meals:main', updatedAt: at, meals: ['lunch' as const, 'dinner' as const] }]
+    expect(attentionOf(only(intake, { meals: noBreakfast }), '2026-03-04')[0]).toMatchObject({
+      count: 2,
+      basis: 'Нет ни записи, ни отметки «Не было»: обед, ужин; основные приёмы — обед, ужин',
+    })
+  })
+
+  it('причина «Не было» в срез не идёт — это свободный текст (Я-14)', () => {
+    const skip = { id: '01SKIP', updatedAt: at, date: '2026-02-03', meal: 'dinner' as const, reason: NOTE }
+    expect(JSON.stringify(summary({ ...data, skips: [skip] }, DAY))).not.toContain(NOTE)
   })
 })

@@ -17,7 +17,7 @@ import type { Base, Migration } from '../shared/core/model.ts'
  * Версия схемы. Растёт с каждым шагом в `migrations` — и с добавлением
  * хранилища тоже: IndexedDB заводит хранилище только при смене версии.
  */
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 // ─── Справочники ───────────────────────────────────────────────────────────
 
@@ -101,6 +101,29 @@ export type Intake = Base & {
 
 export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snack'
 
+/**
+ * «Не было»: основного приёма в этот день не было (Р-59). Синхронизируется —
+ * её видят второе устройство и срез. Запись еды в тот же приём её снимает.
+ * id — ULID: две отметки одного приёма с двух устройств законны, читается поздняя
+ */
+export type Skip = Base & {
+  /** YYYY-MM-DD, день пропущенного приёма, не день отметки */
+  date: string
+  /** только основной: завтрак, обед или ужин */
+  meal: Meal
+  /** «не успел», «плохо себя чувствовал» — по желанию */
+  reason?: string
+}
+
+/**
+ * Основные приёмы — какие спрашиваются, напоминаются и считаются пропуском (Р-59).
+ * Одна запись на все устройства, id — `meals:main`: правят её все, побеждает поздняя правка
+ */
+export type MainMeals = Base & {
+  /** из завтрака, обеда и ужина, хотя бы один */
+  meals: Meal[]
+}
+
 /** Вид записи. Одно значение — ровно то, что описано выше. */
 export type RecordKind = 'intake'
 
@@ -112,7 +135,7 @@ export type RecordKind = 'intake'
  * Менять имена нельзя — они в базе на устройстве. Порядок — тот, в котором
  * пишут импорт и слепок: справочники раньше записей, что на них ссылаются.
  */
-export const SYNCED_STORES = ['categories', 'dishes', 'templates', 'norms', 'intake'] as const
+export const SYNCED_STORES = ['categories', 'dishes', 'templates', 'norms', 'intake', 'meals', 'skips'] as const
 
 export type SyncedStore = (typeof SYNCED_STORES)[number]
 
@@ -126,6 +149,8 @@ export type StoreRecord = {
   templates: Template
   norms: Norm
   intake: Intake
+  meals: MainMeals
+  skips: Skip
 }
 
 // ─── Миграции ──────────────────────────────────────────────────────────────
@@ -136,4 +161,18 @@ export type StoreRecord = {
  * в `app/config.ts` после первого релиза заморожен. Что такое шаг и как он
  * применяется — `Migration` ядра.
  */
-export const migrations: Migration[] = []
+export const migrations: Migration[] = [
+  {
+    to: 2,
+    note: 'хранилища meals и skips — основные приёмы и отметки «Не было» (Р-59)',
+    // Только новые хранилища: прежние и их записи не трогаются, и копия
+    // версии 1 принимается как есть.
+    additive: true,
+    run: (database) => {
+      for (const store of ['meals', 'skips']) {
+        // Индекс `updatedAt` ядро заводит на каждом хранилище — нужен слиянию.
+        database.createObjectStore(store, { keyPath: 'id' }).createIndex('updatedAt', 'updatedAt')
+      }
+    },
+  },
+]

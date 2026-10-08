@@ -1,16 +1,22 @@
 import { useEffect, useState } from 'react'
 import { db } from '../../app/core.ts'
-import type { SyncedStore } from '../../app/model.ts'
+import type { MainMeals, Skip, SyncedStore } from '../../app/model.ts'
 import { reconcilePlan, type CatalogData, type CatalogPlan } from './catalog.ts'
+import { liftedSkips } from './skips.ts'
 
 /** Хранилища еды — все синхронизируемые. */
-const STORES = ['categories', 'dishes', 'templates', 'norms', 'intake'] as const satisfies readonly SyncedStore[]
+const STORES = ['categories', 'dishes', 'templates', 'norms', 'intake', 'meals', 'skips'] as const satisfies readonly SyncedStore[]
 
 export type Food = {
   status: 'loading' | 'ready' | 'failed'
   error: string
   /** Всё с надгробиями: по ним видно, какие id заняты и куда перенесено. */
-  data: { [K in keyof CatalogData]: CatalogData[K][number][] }
+  data: { [K in keyof CatalogData]: CatalogData[K][number][] } & {
+    /** Основные приёмы — одна запись, `readMainMeals` (Р-59). */
+    meals: MainMeals[]
+    /** Отметки «Не было»; действующие — `activeSkips` (Р-59). */
+    skips: Skip[]
+  }
 }
 
 function describe(error: unknown): string {
@@ -18,11 +24,11 @@ function describe(error: unknown): string {
 }
 
 async function readAll(): Promise<Food['data']> {
-  const [categories, dishes, templates, norms, intake] = await Promise.all(
+  const [categories, dishes, templates, norms, intake, meals, skips] = await Promise.all(
     STORES.map((store) => db.getAll(store, { includeDeleted: true })),
   )
   // Порядок `STORES` и деструктуризации один; типы по позиции TypeScript не проследит.
-  return { categories, dishes, templates, norms, intake } as Food['data']
+  return { categories, dishes, templates, norms, intake, meals, skips } as Food['data']
 }
 
 /**
@@ -36,7 +42,7 @@ export function useFood(): Food {
   const [state, setState] = useState<Food>({
     status: 'loading',
     error: '',
-    data: { categories: [], dishes: [], templates: [], norms: [], intake: [] },
+    data: { categories: [], dishes: [], templates: [], norms: [], intake: [], meals: [], skips: [] },
   })
 
   useEffect(() => {
@@ -132,4 +138,42 @@ export function watchMerges(): () => void {
     if (timer) clearTimeout(timer)
     timer = null
   }
+}
+
+/**
+ * Записали еду в приём с отметкой «Не было» — отметка снимается сама (Р-59):
+ * значит, всё-таки ел. Здесь, а не у каждой кнопки: еда приходит тапом,
+ * шаблоном, «как вчера», импортом, из копии и с другого устройства.
+ *
+ * Один на приложение, из `app.tsx`, как `watchMerges`. Повод — запись еды
+ * любого происхождения и пришедшие не своей рукой отметки; своя запись
+ * отметок повода не даёт, иначе снятие звало бы само себя. Возвращает отписку.
+ */
+export function watchSkips(): () => void {
+  let queue: Promise<void> = Promise.resolve()
+
+  async function run(): Promise<void> {
+    const skips = await db.getAll('skips')
+    const dates = skips.map((skip) => skip.date).sort()
+    const from = dates[0]
+    const to = dates[dates.length - 1]
+    if (from === undefined || to === undefined) return
+    const intake = await db.getByIndex('intake', 'date', { from, to })
+    await db.putMany('skips', liftedSkips(skips, intake))
+  }
+
+  // По очереди: два прохода разом поставили бы одно надгробие дважды.
+  // Ошибку сообщить некому — следующая запись еды попробует снова.
+  const schedule = () => {
+    queue = queue.then(run).catch(() => undefined)
+  }
+
+  const off = db.onChange((event) => {
+    if (event.store === 'intake' || (event.store === 'skips' && event.origin !== 'local')) schedule()
+  })
+
+  // Приехавшее до прошлого закрытия приложения.
+  schedule()
+
+  return off
 }

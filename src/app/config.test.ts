@@ -7,7 +7,7 @@ import { LOCAL_STORES } from '../shared/core/model.ts'
 import { buildSummary, checkSummary } from '../shared/core/summary.ts'
 import { summary } from '../modules/food/digest.ts'
 import { config } from './config.ts'
-import { SCHEMA_VERSION, SYNCED_STORES, type Intake, type StoreRecord, type SyncedStore } from './model.ts'
+import { SCHEMA_VERSION, SYNCED_STORES, type Intake, type Skip, type StoreRecord, type SyncedStore } from './model.ts'
 
 /**
  * Конфиг «Трапезы» для ядра (Р-47, Р-52).
@@ -35,29 +35,42 @@ function intake(id: string, date: string): Intake {
   return { id, updatedAt: '2026-09-09T10:00:00.000Z', date, meal: 'lunch', dishId: 'dish:борщ' }
 }
 
-function withIntake(records: Intake[]): { [S in SyncedStore]: StoreRecord[S][] } {
-  return { categories: [], dishes: [], templates: [], norms: [], intake: records }
+function withIntake(records: Intake[], skips: Skip[] = []): { [S in SyncedStore]: StoreRecord[S][] } {
+  return { categories: [], dishes: [], templates: [], norms: [], intake: records, meals: [], skips }
 }
+
+const V1_STORES = ['categories', 'dishes', 'templates', 'norms', 'intake']
 
 describe('данные не трогаются переводом', () => {
   it('база называется trapeza — на общем origin только имя разводит приложения семьи', () => {
     expect(config.dbName).toBe('trapeza')
   })
 
-  it('версия схемы 1, миграций нет', () => {
-    expect(config.schemaVersion).toBe(1)
-    expect(SCHEMA_VERSION).toBe(1)
-    expect(config.migrations).toEqual([])
-  })
-
-  it('пять хранилищ, все — в раскладке версии 1', () => {
-    expect([...config.stores]).toEqual(['categories', 'dishes', 'templates', 'norms', 'intake'])
-    expect([...config.v1Stores]).toEqual([...SYNCED_STORES])
+  it('раскладка версии 1 заморожена: те же пять хранилищ', () => {
+    expect([...config.v1Stores]).toEqual(V1_STORES)
   })
 
   it('формат импорта прежний', () => {
     expect(config.importFormat).toBe('trapeza-import')
   })
+})
+
+describe('шаг 2 — основные приёмы и «Не было» (Р-59)', () => {
+  it('версия схемы 2, шаг один и только добавляет', () => {
+    expect(config.schemaVersion).toBe(2)
+    expect(SCHEMA_VERSION).toBe(2)
+    expect(config.migrations.map((step) => [step.to, step.additive])).toEqual([[2, true]])
+  })
+
+  it('семь хранилищ: прежние пять, за ними meals и skips', () => {
+    expect([...config.stores]).toEqual([...V1_STORES, 'meals', 'skips'])
+    expect([...SYNCED_STORES]).toEqual([...config.stores])
+  })
+
+  it('копия версии 1 принимается: шаг формы записей не меняет', () => {
+    expect(() => db.checkSnapshotVersion(1)).not.toThrow()
+  })
+
 })
 
 describe('схема базы', () => {
@@ -66,11 +79,11 @@ describe('схема базы', () => {
     await db.close()
     const raw = await openRaw()
     try {
-      expect(raw.version).toBe(1)
+      expect(raw.version).toBe(2)
       for (const store of [...SYNCED_STORES, ...LOCAL_STORES]) expect(raw.objectStoreNames.contains(store)).toBe(true)
       const tx = raw.transaction([...SYNCED_STORES], 'readonly')
       expect([...tx.objectStore('intake').indexNames].sort()).toEqual(['date', 'updatedAt'])
-      for (const store of ['categories', 'dishes', 'templates', 'norms'] as const) {
+      for (const store of ['categories', 'dishes', 'templates', 'norms', 'meals', 'skips'] as const) {
         expect([...tx.objectStore(store).indexNames]).toEqual(['updatedAt'])
       }
     } finally {
@@ -78,7 +91,7 @@ describe('схема базы', () => {
     }
   })
 
-  it('база, заведённая прежним кодом, открывается с прежними записями', async () => {
+  it('база, заведённая прежним кодом, открывается с прежними записями и доезжает до версии 2', async () => {
     // Ровно так её заводил `createStores` в `core/db.ts` до перевода:
     // на телефоне лежит именно она, и переустанавливать приложение нельзя.
     await legacyBase([intake('i1', '2026-09-17')])
@@ -87,6 +100,22 @@ describe('схема базы', () => {
     expect(await db.get('intake', 'i1')).toMatchObject({ date: '2026-09-17', dishId: 'dish:борщ' })
     expect(await db.count('intake')).toBe(1)
     expect(await db.settings.get('syncRepo')).toBe('me/TrapezaData')
+
+    // Шаг 2 завёл новые хранилища — в них пишется и читается.
+    const skip: Skip = { id: 's1', updatedAt: '2026-09-18T08:00:00.000Z', date: '2026-09-17', meal: 'breakfast', reason: 'не успел' }
+    await db.put('skips', skip)
+    await db.put('meals', { id: 'meals:main', updatedAt: '2026-09-18T08:00:00.000Z', meals: ['lunch', 'dinner'] })
+    expect(await db.get('skips', 's1')).toMatchObject({ meal: 'breakfast', reason: 'не успел' })
+    expect(await db.get('meals', 'meals:main')).toMatchObject({ meals: ['lunch', 'dinner'] })
+    expect(await db.meta.get('schemaVersion')).toBe(2)
+  })
+
+  it('копия версии 1 через createLegacyBase доезжает тем же путём, что у человека', async () => {
+    const skipped = await db.createLegacyBase(1, { intake: [intake('i2', '2026-09-18')] })
+    expect(skipped).toEqual([])
+    await db.ready()
+    expect(await db.count('intake')).toBe(1)
+    expect(await db.count('skips')).toBe(0)
   })
 })
 
@@ -100,10 +129,17 @@ describe('раскладка репозитория данных', () => {
       'dishes.json',
       'intake/2026-01.json',
       'intake/2026-02.json',
+      'meals.json',
       'meta.json',
       'norms.json',
       'templates.json',
     ])
+  })
+
+  it('отметки «Не было» — по месяцу пропущенного приёма, своей папкой (Р-59)', () => {
+    const skip: Skip = { id: 's1', updatedAt: '2026-09-18T08:00:00.000Z', date: '2026-03-31', meal: 'dinner' }
+    const paths = layout.buildFiles(withIntake([], [skip])).map((file) => file.path)
+    expect(paths).toContain('skips/2026-03.json')
   })
 
   it('запись с испорченной датой не пропадает — уезжает в undated', () => {
@@ -113,7 +149,7 @@ describe('раскладка репозитория данных', () => {
 
   it('README называет каждый файл раскладки', () => {
     const text = layout.readmeFile().content
-    for (const path of ['categories.json', 'dishes.json', 'templates.json', 'norms.json', 'intake/ГГГГ-ММ.json']) {
+    for (const path of ['categories.json', 'dishes.json', 'templates.json', 'norms.json', 'intake/ГГГГ-ММ.json', 'meals.json', 'skips/ГГГГ-ММ.json']) {
       expect(text).toContain(`\`${path}\``)
     }
   })

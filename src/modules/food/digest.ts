@@ -4,8 +4,8 @@
  * Функцию зовёт проход синхронизации ядра через `summary` конфига и кладёт
  * результат файлом `summary.json` в репозиторий данных. Само приложение срез
  * не читает. Считается только из живых синхронизируемых записей и дня
- * расчёта: отметки «Не было» — настройка устройства — сюда не попадают,
- * иначе два устройства переписывали бы файл друг за другом (Я-16).
+ * расчёта (Я-16): отметки «Не было» и основные приёмы — такие записи
+ * с Р-59, и срез их видит.
  *
  * Числа — теми же функциями, что экран «Неделя»: срез и экран не спорят.
  * Заметки записей и рецепты в срез не идут никогда (Я-14).
@@ -21,11 +21,12 @@ import {
   type SummaryPeriod,
   type Unknown,
 } from '../../shared/core/summary.ts'
-import type { Dish, StoreRecord } from '../../app/model.ts'
+import type { Dish, Meal, StoreRecord } from '../../app/model.ts'
 import { dayLink } from './feed.ts'
 import { MEAL_NAMES, normRuleText } from './labels.ts'
 import { activeNorms, checkWeek, indexDays, type DayIndex } from './norms.ts'
-import { MAIN_MEALS, missedMeals } from './usual.ts'
+import { MAIN_MEALS, readMainMeals, skippedKeys } from './skips.ts'
+import { missedMeals } from './usual.ts'
 import { loggedText, weekSummary } from './week.ts'
 
 /** Живые записи синхронизируемых хранилищ — то, что даёт проход ядра. */
@@ -121,17 +122,24 @@ function weekMetrics(data: DigestData, dishes: ReadonlyMap<string, Dish>, index:
 }
 
 /**
- * «Требует внимания» (Р-55, Я-18): вчера нет записи завтрака, обеда или
- * ужина. Только по записям — отметки «Не было» живут на устройстве (Р-29).
+ * «Требует внимания» (Р-55, Я-18): вчера нет записи основного приёма и нет
+ * отметки «Не было» (Р-59). Снятый в «Основных приёмах» — не пропуск.
  * До первой записи вообще — пусто: учёт не начат.
  */
-export function attentionOf(intake: readonly StoreRecord['intake'][], day: DateStr): Attention[] {
+export function attentionOf(
+  data: Pick<DigestData, 'intake' | 'skips' | 'meals'>,
+  day: DateStr,
+): Attention[] {
   const yesterday = addDays(day, -1)
-  const live = intake.filter((record) => !record.deleted && isDateStr(record.date))
+  const live = data.intake.filter((record) => !record.deleted && isDateStr(record.date))
   if (!live.some((record) => record.date <= yesterday)) return []
-  const missed = missedMeals(live, yesterday, MAIN_MEALS, [])
+  const mains = readMainMeals(data.meals)
+  const missed = missedMeals(live, yesterday, mains, skippedKeys(data.skips, live))
   if (missed.length === 0) return []
-  const names = missed.map((meal) => MEAL_NAMES[meal].toLowerCase()).join(', ')
+  const list = (meals: readonly Meal[]) => meals.map((meal) => MEAL_NAMES[meal].toLowerCase()).join(', ')
+  // Основные приёмы — в основании, когда какой-то снят: иначе читатель не
+  // знает, почему ужин без записи пропуском не назван.
+  const own = mains.length < MAIN_MEALS.length ? `; основные приёмы — ${list(mains)}` : ''
   return [
     {
       key: 'meals.missed',
@@ -139,7 +147,7 @@ export function attentionOf(intake: readonly StoreRecord['intake'][], day: DateS
       count: missed.length,
       day: yesterday,
       link: dayLink(yesterday, day),
-      basis: `По записям нет: ${names}. Отметки «Не было» живут на устройстве и не учтены`,
+      basis: `Нет ни записи, ни отметки «Не было»: ${list(missed)}${own}`,
     },
   ]
 }
@@ -154,6 +162,6 @@ export function summary(data: DigestData, day: DateStr): SummaryBody {
       through: isCurrent(period, day) ? day : null,
       metrics: period.grain === 'week' ? weekMetrics(data, dishes, index, period.from, day) : MONTH,
     })),
-    attention: attentionOf(data.intake, day),
+    attention: attentionOf(data, day),
   }
 }
