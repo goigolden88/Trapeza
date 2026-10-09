@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { config } from './app/config.ts'
 import { db, sync } from './app/core.ts'
-import { watchMerges } from './modules/food/useFood.ts'
+import { watchMerges, watchSkips } from './modules/food/useFood.ts'
 import { CoreProvider } from './shared/ui/core.tsx'
 import { Layout, type Tab } from './shared/ui/Layout.tsx'
 import { Dishes } from './screens/Dishes.tsx'
@@ -39,6 +39,8 @@ const TABS: readonly Tab[] = [
 export function App() {
   useEffect(() => sync.startAutoSync(), [])
   useEffect(() => watchMerges(), [])
+  // «Не было» снимается записанной едой (Р-59) — тоже одно на приложение.
+  useEffect(() => watchSkips(), [])
 
   return (
     <CoreProvider value={{ config, db, sync }}>

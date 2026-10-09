@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Dish, Intake, Template } from '../../app/model.ts'
+import { MAIN_MEALS, skipKey } from './skips.ts'
 import {
-  MAIN_MEALS,
   offerText,
-  readSkipped,
-  skipKey,
   unansweredMeals,
   USUAL_MEALS,
   USUAL_SHARE,
@@ -12,7 +10,6 @@ import {
   usualFoldId,
   usualOffer,
   waitingText,
-  withSkipped,
 } from './usual.ts'
 
 const at = '2026-09-16T10:00:00.000Z'
@@ -141,12 +138,12 @@ describe('о каких приёмах спросить — Р-29', () => {
 
   it('вчера — три основных без записей; сегодня — до текущего; перекус никогда', () => {
     const intake = [eaten(yesterday, 'lunch', 'суп'), eaten(yesterday, 'snack', 'чай'), eaten(today, 'lunch', 'суп')]
-    expect(unansweredMeals(intake, today, 'dinner', [])).toEqual([
+    expect(unansweredMeals(intake, today, 'dinner', [], MAIN_MEALS)).toEqual([
       { date: yesterday, meal: 'breakfast' },
       { date: yesterday, meal: 'dinner' },
       { date: today, meal: 'breakfast' },
     ])
-    expect(unansweredMeals(intake, today, 'breakfast', [])).toEqual([
+    expect(unansweredMeals(intake, today, 'breakfast', [], MAIN_MEALS)).toEqual([
       { date: yesterday, meal: 'breakfast' },
       { date: yesterday, meal: 'dinner' },
     ])
@@ -155,25 +152,16 @@ describe('о каких приёмах спросить — Р-29', () => {
   it('«Не было» — не спрашивается; удалённая запись — не запись', () => {
     const intake = [eaten(yesterday, 'breakfast', 'каша', { deleted: true })]
     const skipped = [skipKey(yesterday, 'lunch'), skipKey(yesterday, 'dinner'), skipKey(today, 'breakfast')]
-    expect(unansweredMeals(intake, today, 'lunch', skipped)).toEqual([{ date: yesterday, meal: 'breakfast' }])
-  })
-})
-
-describe('отметки «Не было» — Р-29', () => {
-  const today = '2026-09-18'
-
-  it('только за сегодня и вчера, без повторов и мусора', () => {
-    const stored = ['2026-09-18:lunch', '2026-09-16:lunch', '2026-09-17:dinner', '2026-09-17:dinner', 5, '2026-09-18:полдник']
-    expect(readSkipped(stored, today)).toEqual(['2026-09-18:lunch', '2026-09-17:dinner'])
-    expect(readSkipped('мусор', today)).toEqual([])
+    expect(unansweredMeals(intake, today, 'lunch', skipped, MAIN_MEALS)).toEqual([{ date: yesterday, meal: 'breakfast' }])
   })
 
-  it('новая отметка дописывается, старое отбрасывается', () => {
-    expect(withSkipped(['2026-09-16:lunch', '2026-09-17:lunch'], today, today, 'breakfast')).toEqual([
-      '2026-09-17:lunch',
-      '2026-09-18:breakfast',
+  it('снятый в «Основных приёмах» — не спрашивается ни вчера, ни сегодня — Р-59', () => {
+    expect(unansweredMeals([], today, 'dinner', [], ['lunch', 'dinner'])).toEqual([
+      { date: yesterday, meal: 'lunch' },
+      { date: yesterday, meal: 'dinner' },
+      { date: today, meal: 'lunch' },
     ])
-    expect(withSkipped(undefined, today, today, 'breakfast')).toEqual(['2026-09-18:breakfast'])
+    expect(unansweredMeals([], today, 'lunch', [], ['lunch'])).toEqual([{ date: yesterday, meal: 'lunch' }])
   })
 })
 

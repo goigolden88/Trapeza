@@ -28,12 +28,16 @@ export const config: AppConfig<StoreRecord> = {
   v1Stores: ['categories', 'dishes', 'templates', 'norms', 'intake'],
 
   // Сверх `updatedAt`: выборки дня, недели и возврата идут по дате еды.
+  // Хранилища шага 2 индексы заводят в своём шаге (Я-08 «FamilyCore»):
+  // сверх `updatedAt` им не нужно — отметок и настроек единицы.
   indexes: {
     categories: [],
     dishes: [],
     templates: [],
     norms: [],
     intake: ['date'],
+    meals: [],
+    skips: [],
   },
 
   // 02-Архитектура, «Раскладка данных в репозитории».
@@ -45,6 +49,10 @@ export const config: AppConfig<StoreRecord> = {
     // Месяц — по дню еды, а не по дню ввода. Дата у записи обязательна,
     // в undated попадает только испорченная.
     intake: { split: 'month', dir: 'intake', dateOf: (intake) => intake.date },
+    // Р-59: одна запись на все устройства — одним файлом; отметки — как еда,
+    // по месяцу пропущенного приёма.
+    meals: { split: 'none', path: 'meals.json' },
+    skips: { split: 'month', dir: 'skips', dateOf: (skip) => skip.date },
   },
 
   storeNotes: {
@@ -53,6 +61,8 @@ export const config: AppConfig<StoreRecord> = {
     templates: 'шаблоны приёмов пищи',
     norms: 'нормы недели',
     intake: 'что съедено — по месяцу, когда ели',
+    meals: 'основные приёмы — какие спрашивать и напоминать',
+    skips: 'отметки «Не было» — по месяцу пропущенного приёма',
   },
 
   importFormat: 'trapeza-import',

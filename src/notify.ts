@@ -15,20 +15,21 @@ import { DAY_KEYS, createReminders } from './shared/notify.ts'
 import { addDays } from './shared/core/dates.ts'
 import { db } from './app/core.ts'
 import { unfilledNotice } from './modules/food/remind.ts'
-import { readSkipped, SKIPPED_KEY } from './modules/food/usual.ts'
+import { readMainMeals, skippedKeys } from './modules/food/skips.ts'
 
 export const reminders = createReminders(db.settings, {
   async topics(day) {
     // Правилу нужны вчера и сегодня — по индексу даты, а не всё хранилище
-    // (Я-08 «FamilyCore»). «Не было» — отметки этого устройства (Р-29):
-    // пропуском не считаются.
-    const [intake, skipped] = await Promise.all([
+    // (Я-08 «FamilyCore»). Отметки «Не было» и основные приёмы —
+    // синхронизируемые записи (Р-59), их единицы: читаются целиком.
+    const [intake, skips, meals] = await Promise.all([
       db.getByIndex('intake', 'date', { from: addDays(day, -1), to: day }),
-      db.settings.get<unknown>(SKIPPED_KEY),
+      db.getAll('skips'),
+      db.getAll('meals'),
     ])
     return [
       {
-        notice: unfilledNotice(intake, day, readSkipped(skipped, day)),
+        notice: unfilledNotice(intake, day, skippedKeys(skips, intake), readMainMeals(meals)),
         tag: 'day',
         target: '/',
         loudKey: DAY_KEYS.loud,

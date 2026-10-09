@@ -1,6 +1,7 @@
 /**
  * «Как обычно?» (Р-29): о каких приёмах спросить при открытии и что
- * предложить. Здесь же отметка «Не было» — её видит и напоминание (Р-30).
+ * предложить. О пропуске судит и напоминание (Р-30), и срез (Р-55): приём
+ * без записи, без отметки «Не было» и из основных (Р-59).
  *
  * Чистые функции, без React и без базы.
  */
@@ -8,21 +9,15 @@
 import { addDays, isDateStr, plural, type DateStr } from '../../shared/core/dates.ts'
 import type { Dish, Intake, Meal, Template } from '../../app/model.ts'
 import { amountText } from './forms.ts'
-import { MEALS } from './labels.ts'
 import type { RepeatItem } from './repeat.ts'
+import { MAIN_MEALS, skipKey } from './skips.ts'
 import { itemsForMeal, templatesOf } from './templates.ts'
-
-/** Приёмы, о которых спрашивают и напоминают: перекус без часов — никогда. */
-export const MAIN_MEALS: readonly Meal[] = ['breakfast', 'lunch', 'dinner']
 
 /** По скольким последним записанным таким приёмам судится «обычное». */
 export const USUAL_MEALS = 20
 
 /** В какой доле этих приёмов блюдо должно быть, чтобы считаться обычным. */
 export const USUAL_SHARE = 0.5
-
-/** Ключ настройки устройства: отметки «Не было» (02-Архитектура). */
-export const SKIPPED_KEY = 'usualSkipped'
 
 /**
  * Ключ сворачивания блока (Р-32): с датой — свёрнутый блок остаётся свёрнутым
@@ -37,40 +32,15 @@ export function waitingText(count: number): string {
   return `${count} ${plural(count, ['приём', 'приёма', 'приёмов'])}`
 }
 
-// ─── «Не было» ─────────────────────────────────────────────────────────────
-
-/** Отметка «Не было»: `ГГГГ-ММ-ДД:приём`. */
-export function skipKey(date: DateStr, meal: Meal): string {
-  return `${date}:${meal}`
-}
-
-/**
- * Отметки из настройки — только за сегодня и вчера (Р-29): старые ни о чём
- * не спрашивают и отбрасываются при следующей записи. Мусор — мимо.
- */
-export function readSkipped(stored: unknown, today: DateStr): string[] {
-  if (!Array.isArray(stored)) return []
-  const days = new Set([today, addDays(today, -1)])
-  return [
-    ...new Set(
-      stored.filter(
-        (each): each is string =>
-          typeof each === 'string' && days.has(each.slice(0, 10)) && MEALS.includes(each.slice(11) as Meal),
-      ),
-    ),
-  ]
-}
-
-/** Отметки с новой — для записи в настройку. */
-export function withSkipped(stored: unknown, today: DateStr, date: DateStr, meal: Meal): string[] {
-  return readSkipped([...readSkipped(stored, today), skipKey(date, meal)], today)
-}
-
 // ─── О чём спросить ────────────────────────────────────────────────────────
 
 export type Unanswered = { date: DateStr; meal: Meal }
 
-/** Приёмы дня без живых записей и без отметки «Не было» — в порядке `meals`. Его же зовёт напоминание (Р-30). */
+/**
+ * Приёмы дня без живых записей и без отметки «Не было» — в порядке `meals`.
+ * `skipped` — ключи `skipKey` действующих отметок (`skippedKeys`). Его же
+ * зовут напоминание (Р-30) и срез (Р-55).
+ */
 export function missedMeals(
   intake: readonly Intake[],
   date: DateStr,
@@ -85,20 +55,22 @@ export function missedMeals(
 }
 
 /**
- * О каких приёмах спросить (Р-29): вчера — завтрак, обед и ужин без записей;
- * сегодня — те же до текущего приёма. Отмеченные «Не было» — нет. Вчерашние
- * первыми: по порядку дня.
+ * О каких приёмах спросить (Р-29): вчера — основные приёмы без записей;
+ * сегодня — те же до текущего приёма. Отмеченные «Не было» и снятые
+ * в «Основных приёмах» — нет (Р-59). Вчерашние первыми: по порядку дня.
  */
 export function unansweredMeals(
   intake: readonly Intake[],
   today: DateStr,
   current: Meal,
   skipped: readonly string[],
+  mains: readonly Meal[],
 ): Unanswered[] {
   const yesterday = addDays(today, -1)
-  const before = MAIN_MEALS.slice(0, Math.max(0, MAIN_MEALS.indexOf(current)))
+  const asked = MAIN_MEALS.filter((meal) => mains.includes(meal))
+  const before = MAIN_MEALS.slice(0, Math.max(0, MAIN_MEALS.indexOf(current))).filter((meal) => asked.includes(meal))
   return [
-    ...missedMeals(intake, yesterday, MAIN_MEALS, skipped).map((meal) => ({ date: yesterday, meal })),
+    ...missedMeals(intake, yesterday, asked, skipped).map((meal) => ({ date: yesterday, meal })),
     ...missedMeals(intake, today, before, skipped).map((meal) => ({ date: today, meal })),
   ]
 }

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { db } from '../app/core.ts'
 import { addDays, formatDate, formatDateLong, formatPeriod, nowIso, plural, weekPeriod, type DateStr } from '../shared/core/dates.ts'
 import { ulid } from '../shared/core/id.ts'
-import type { Category, Dish, Intake, Meal, Norm, Template } from '../app/model.ts'
+import type { Category, Dish, Intake, Meal, Norm, Skip, Template } from '../app/model.ts'
 import { activeDishes, createDish } from '../modules/food/catalog.ts'
 import { clearMeal, dayMeals, tapDish, viewedDay } from '../modules/food/day.ts'
 import { amountText, intakeInput, readIntake, stepPortions, type IntakeInput } from '../modules/food/forms.ts'
@@ -29,16 +29,13 @@ import {
   type TemplateKind,
 } from '../modules/food/templates.ts'
 import { useFood, type Food } from '../modules/food/useFood.ts'
+import { clearSkip, createSkip, readMainMeals, skipKey, skipOf, skippedKeys } from '../modules/food/skips.ts'
 import {
   offerText,
-  readSkipped,
-  SKIPPED_KEY,
-  skipKey,
   unansweredMeals,
   usualFoldId,
   usualOffer,
   waitingText,
-  withSkipped,
   type Offer,
   type Unanswered,
 } from '../modules/food/usual.ts'
@@ -205,6 +202,9 @@ function Day({ day, today, data, hours }: { day: DateStr; today: DateStr; data: 
   const meals = dayMeals(data.intake, day)
   const dayRecords = Object.values(meals).flat()
   const live = activeDishes(data.dishes)
+  const mains = readMainMeals(data.meals)
+  // «Не было» — у основного приёма, на сегодня — у начавшегося (Р-59).
+  const started = startedMeals(current)
 
   // Пустой справочник — подсказка над приёмами, а не вместо них: первое блюдо
   // заводится и поиском приёма (Р-37).
@@ -229,14 +229,14 @@ function Day({ day, today, data, hours }: { day: DateStr; today: DateStr; data: 
         </p>
       )}
       {current !== null && (
-        <Usual today={today} current={current} data={data} dishes={dishes} save={save} onNote={setNote} />
+        <Usual today={today} current={current} mains={mains} data={data} dishes={dishes} save={save} onNote={setNote} />
       )}
       <DayTemplates
         day={day}
         records={dayRecords}
         templates={data.templates}
         dishes={dishes}
-        allowed={startedMeals(current)}
+        allowed={started}
         save={save}
         onNote={setNote}
       />
@@ -256,6 +256,8 @@ function Day({ day, today, data, hours }: { day: DateStr; today: DateStr; data: 
           templates={data.templates}
           intake={data.intake}
           norms={data.norms}
+          skips={data.skips}
+          skippable={mains.includes(meal) && started.includes(meal)}
           save={save}
           onNote={setNote}
         />
@@ -283,6 +285,8 @@ function MealBlock({
   templates,
   intake,
   norms,
+  skips,
+  skippable,
   save,
   onNote,
 }: {
@@ -299,12 +303,21 @@ function MealBlock({
   templates: Template[]
   intake: Intake[]
   norms: Norm[]
+  skips: Skip[]
+  /** Можно ли отметить «Не было»: основной приём, на сегодня — начавшийся (Р-59). */
+  skippable: boolean
   save: Save
   onNote: (text: string) => void
 }) {
   const [editing, setEditing] = useState<string | null>(null)
+  // Отметка у приёма с едой не действует: еда главнее (Р-59).
+  const skip = skipOf(skips, intake, day, meal)
   const summary =
-    records.length === 0 ? 'не записан' : `${records.length} ${plural(records.length, FORMS.dish)}`
+    records.length > 0
+      ? `${records.length} ${plural(records.length, FORMS.dish)}`
+      : skip
+        ? skipSummary(skip)
+        : 'не записан'
 
   return (
     <section className="block meal">
@@ -348,6 +361,9 @@ function MealBlock({
         <SaveTemplate kind={meal} records={records} templates={templates} dishes={dishes} save={save} onNote={onNote} />
       )}
       {records.length > 0 && <ClearMeal meal={meal} day={day} intake={intake} dishes={dishes} save={save} onNote={onNote} />}
+      {records.length === 0 && (skip || skippable) && (
+        <MealSkip meal={meal} day={day} skip={skip} skips={skips} save={save} onNote={onNote} />
+      )}
 
       {open && (
         <DishPicker
@@ -588,16 +604,122 @@ function ClearMeal({
   )
 }
 
+/** Итог у заголовка приёма с отметкой: «не было — не успел». */
+function skipSummary(skip: Skip): string {
+  return skip.reason ? `не было — ${skip.reason}` : 'не было'
+}
+
+/** Записать отметку «Не было» (Р-59). true — прошло. */
+async function writeSkip(save: Save, date: DateStr, meal: Meal, reason: string): Promise<boolean> {
+  return save(() => db.put('skips', createSkip(date, meal, reason, ulid(), nowIso())))
+}
+
+/** Строка после отметки: «Вчера, ужин — не было: не успел». */
+function skippedNote(what: string, reason: string): string {
+  return reason.trim() ? `${what} — не было: ${reason.trim()}` : `${what} — не было`
+}
+
 /**
- * «Как обычно?» (Р-29) — наверху сегодняшнего дня: вчерашние завтрак, обед
- * и ужин без записей и сегодняшние до текущего приёма. Одним тапом — шаблон
- * или обычные блюда приёма; «Не было» — приём больше не спрашивается.
- * Сворачивается (Р-31): у заголовка — сколько приёмов ждут; каждый день
- * начинается развёрнутым, свёрнутый остаётся свёрнутым до конца дня (Р-32).
+ * «Не было» у пустого основного приёма (Р-59) — в том числе задним числом;
+ * здесь же снимается. Причина — по желанию: «Готово» и без неё. Записанная
+ * в приём еда снимает отметку сама.
+ */
+function MealSkip({
+  meal,
+  day,
+  skip,
+  skips,
+  save,
+  onNote,
+}: {
+  meal: Meal
+  day: DateStr
+  skip: Skip | undefined
+  skips: Skip[]
+  save: Save
+  onNote: (text: string) => void
+}) {
+  const [asking, setAsking] = useState(false)
+  const what = `${MEAL_NAMES[meal]} за ${formatDateLong(day)}`
+
+  if (skip) {
+    const lift = async () => {
+      if (await save(() => db.putMany('skips', clearSkip(skips, day, meal)))) onNote(`${what} — отметка «Не было» снята`)
+    }
+    return (
+      <button type="button" className="link-btn meal__save" onClick={() => void lift()}>
+        Снять «Не было»
+      </button>
+    )
+  }
+
+  if (!asking) {
+    return (
+      <button type="button" className="link-btn meal__save" onClick={() => setAsking(true)}>
+        Не было
+      </button>
+    )
+  }
+
+  return (
+    <SkipForm
+      onCancel={() => setAsking(false)}
+      onDone={async (reason) => {
+        if (await writeSkip(save, day, meal, reason)) {
+          setAsking(false)
+          onNote(skippedNote(what, reason))
+        }
+      }}
+    />
+  )
+}
+
+/** Причина «Не было» — по желанию (Р-59): «Готово» и с пустым полем. */
+function SkipForm({ onDone, onCancel }: { onDone: (reason: string) => Promise<void>; onCancel: () => void }) {
+  const [reason, setReason] = useState('')
+  return (
+    <form
+      className="form skip-form"
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault()
+        void onDone(reason)
+      }}
+    >
+      <label className="field">
+        <span>Причина — по желанию</span>
+        <input
+          name="skip-reason"
+          value={reason}
+          placeholder="не успел, плохо себя чувствовал"
+          onChange={(event) => setReason(event.target.value)}
+        />
+      </label>
+      <div className="form__actions">
+        <button type="button" className="btn" onClick={onCancel}>
+          Отмена
+        </button>
+        <button type="submit" className="btn btn--primary">
+          Готово
+        </button>
+      </div>
+    </form>
+  )
+}
+
+/**
+ * «Как обычно?» (Р-29) — наверху сегодняшнего дня: вчерашние основные приёмы
+ * без записей и сегодняшние до текущего. Одним тапом — шаблон или обычные
+ * блюда приёма; «Не было» с причиной по желанию — приём больше не
+ * спрашивается, и отметку видят все устройства и отчёты (Р-59). Снятые
+ * в «Основных приёмах» не спрашиваются. Сворачивается (Р-31): у заголовка —
+ * сколько приёмов ждут; каждый день начинается развёрнутым, свёрнутый
+ * остаётся свёрнутым до конца дня (Р-32).
  */
 function Usual({
   today,
   current,
+  mains,
   data,
   dishes,
   save,
@@ -605,27 +727,17 @@ function Usual({
 }: {
   today: DateStr
   current: Meal
+  mains: readonly Meal[]
   data: Data
   dishes: ReadonlyMap<string, Dish>
   save: Save
   onNote: (text: string) => void
 }) {
-  // null — отметки «Не было» ещё не прочитаны: без них вопрос мелькнул бы зря.
-  const [skipped, setSkipped] = useState<string[] | null>(null)
+  // Строка, у которой открыта причина «Не было», — ключ `skipKey`.
+  const [asking, setAsking] = useState<string | null>(null)
 
-  useEffect(() => {
-    let alive = true
-    db.settings
-      .get<unknown>(SKIPPED_KEY)
-      .then((stored) => alive && setSkipped(readSkipped(stored, today)))
-      .catch(() => alive && setSkipped([]))
-    return () => {
-      alive = false
-    }
-  }, [today])
-
-  if (skipped === null) return null
-  const rows = unansweredMeals(data.intake, today, current, skipped).flatMap((row) => {
+  const skipped = skippedKeys(data.skips, data.intake)
+  const rows = unansweredMeals(data.intake, today, current, skipped, mains).flatMap((row) => {
     const offer = usualOffer(row.meal, row.date, data.templates, data.intake, dishes)
     return offer ? [{ ...row, offer }] : []
   })
@@ -641,31 +753,36 @@ function Usual({
     if (await save(() => db.putMany('intake', made))) onNote(`${when(row)} — ${offerText(row.offer, row.meal, dishes)}`)
   }
 
-  async function skip(row: Unanswered) {
-    const done = await save(async () => {
-      const next = withSkipped(await db.settings.get<unknown>(SKIPPED_KEY), today, row.date, row.meal)
-      await db.settings.set(SKIPPED_KEY, next)
-      setSkipped(next)
-    })
-    if (done) onNote(`${when(row)} — не было`)
+  async function skip(row: Unanswered, reason: string) {
+    if (await writeSkip(save, row.date, row.meal, reason)) {
+      setAsking(null)
+      onNote(skippedNote(when(row), reason))
+    }
   }
 
   return (
     <Fold id={usualFoldId(today)} title="Как обычно?" summary={waitingText(rows.length)}>
       <ul className="plain">
-        {rows.map((row) => (
-          <li key={skipKey(row.date, row.meal)} className="usual__row">
-            <p className="usual__what">{when(row)} — не записан</p>
-            <div className="row row--wrap">
-              <button type="button" className="btn btn--primary usual__yes" onClick={() => void accept(row)}>
-                {offerText(row.offer, row.meal, dishes)}
-              </button>
-              <button type="button" className="btn" onClick={() => void skip(row)}>
-                Не было
-              </button>
-            </div>
-          </li>
-        ))}
+        {rows.map((row) => {
+          const key = skipKey(row.date, row.meal)
+          return (
+            <li key={key} className="usual__row">
+              <p className="usual__what">{when(row)} — не записан</p>
+              {asking === key ? (
+                <SkipForm onCancel={() => setAsking(null)} onDone={(reason) => skip(row, reason)} />
+              ) : (
+                <div className="row row--wrap">
+                  <button type="button" className="btn btn--primary usual__yes" onClick={() => void accept(row)}>
+                    {offerText(row.offer, row.meal, dishes)}
+                  </button>
+                  <button type="button" className="btn" onClick={() => setAsking(key)}>
+                    Не было
+                  </button>
+                </div>
+              )}
+            </li>
+          )
+        })}
       </ul>
     </Fold>
   )

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CHANGES } from '../changes.ts'
 import { db } from '../app/core.ts'
-import { today } from '../shared/core/dates.ts'
+import { nowIso, today } from '../shared/core/dates.ts'
 import { SCHEMA_VERSION, SYNCED_STORES } from '../app/model.ts'
-import type { RecordKind, SyncedStore } from '../app/model.ts'
+import type { MainMeals, Meal, RecordKind, SyncedStore } from '../app/model.ts'
+import { MEAL_NAMES } from '../modules/food/labels.ts'
+import { MAIN_MEALS, mainMealsText, readMainMeals, withMainMeal } from '../modules/food/skips.ts'
 import { config } from '../app/config.ts'
 import { importPrompt, KIND_ORDER, KINDS, markdownExport, planImport } from '../registry.ts'
 import { reminders } from '../notify.ts'
@@ -26,6 +28,8 @@ const LABELS: Record<SyncedStore, string> = {
   templates: 'Шаблоны приёмов',
   norms: 'Нормы недели',
   intake: 'Записи еды',
+  meals: 'Основные приёмы',
+  skips: 'Отметки «Не было»',
 }
 
 type Row = { store: SyncedStore; live: number; total: number }
@@ -46,7 +50,8 @@ function describe(error: unknown): string {
  * копии видно и у свёрнутого.
  *
  * Разделы: «Синхронизация» — первой, «Экспорт и импорт» — копия файлом
- * импорт записей и markdown за период (Р-34), «Напоминания» (Р-30) и «О приложении».
+ * импорт записей и markdown за период (Р-34), «Основные приёмы» (Р-59),
+ * «Напоминания» (Р-30) и «О приложении».
  */
 export function Settings() {
   const [state, setState] = useState<State>({ status: 'loading' })
@@ -82,10 +87,89 @@ export function Settings() {
 
       <DataTransfer onChanged={load} />
 
+      <MainMealsSettings />
+
       <Reminders />
 
       <About state={state} />
     </>
+  )
+}
+
+// ─── Основные приёмы (Р-59) ────────────────────────────────────────────────
+
+/**
+ * Какие приёмы у человека обычно бывают — галочками, хотя бы один. Не
+ * настройка устройства, а синхронизируемая запись: её видят второе
+ * устройство и срез для «Тотального Учёта».
+ */
+function MainMealsSettings() {
+  // null — запись ещё читается: галочки не мигают умолчанием.
+  const [records, setRecords] = useState<MainMeals[] | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    const load = () =>
+      void db
+        .getAll('meals')
+        .then((list) => alive && setRecords(list))
+        .catch((failure) => alive && setError(describe(failure)))
+    load()
+    // Правка с другого устройства приходит синхронизацией — галочки за ней.
+    const off = db.onChange((event) => {
+      if (event.store === 'meals') load()
+    })
+    return () => {
+      alive = false
+      off()
+    }
+  }, [])
+
+  const mains = records === null ? null : readMainMeals(records)
+
+  async function toggle(meal: Meal, on: boolean) {
+    if (records === null) return
+    const next = withMainMeal(records, meal, on, nowIso())
+    if (next === null) return
+    setError('')
+    try {
+      await db.put('meals', next)
+    } catch (failure) {
+      setError(describe(failure))
+    }
+  }
+
+  return (
+    <Fold id="settings:meals" title="Основные приёмы" summary={mains ? mainMealsText(mains) : undefined} folded>
+      {mains && (
+        <>
+          <p className="muted">
+            Какие приёмы у вас обычно бывают. Снятый не спрашивается в «Как обычно?», не напоминается и не
+            считается пропуском — ни здесь, ни в «Тотальном Учёте»; записать в него еду можно как раньше.
+            Хотя бы один остаётся. Общая для всех устройств.
+          </p>
+          {MAIN_MEALS.map((meal) => {
+            const on = mains.includes(meal)
+            return (
+              <label key={meal} className="check">
+                <input
+                  type="checkbox"
+                  name="main-meal"
+                  value={meal}
+                  checked={on}
+                  // Последний не снимается: хоть один приём спрашивается.
+                  disabled={on && mains.length === 1}
+                  onChange={(event) => void toggle(meal, event.target.checked)}
+                />
+                <span>{MEAL_NAMES[meal]}</span>
+              </label>
+            )
+          })}
+        </>
+      )}
+      {error && <p className="error">{error}</p>}
+    </Fold>
   )
 }
 
@@ -99,7 +183,8 @@ const REMINDER_TEXT: Record<ReminderStatus, string> = {
   denied: 'Уведомления для этого сайта запрещены в настройках браузера. Разрешить их можно только там.',
   off:
     'Примерно раз в сутки приложение напомнит, если сегодня ничего не записано или вчера не записан ' +
-    'завтрак, обед или ужин. Приём, отмеченный «Не было», пропуском не считается. Даже закрытое.',
+    'основной приём — завтрак, обед или ужин, кроме снятых в «Основных приёмах». Приём, отмеченный ' +
+    '«Не было», пропуском не считается. Даже закрытое.',
   'not-installed':
     'Уведомления разрешены, но фоновую проверку браузер не дал. Так бывает, когда приложение ' +
     'открыто во вкладке, а не установлено иконкой.',

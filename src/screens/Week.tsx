@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { db } from '../app/core.ts'
 import { addDays, days as daysText, formatDateLong, formatPeriod, nowIso, plural, weekStart, type DateStr } from '../shared/core/dates.ts'
 import { ulid } from '../shared/core/id.ts'
-import type { Category, Norm } from '../app/model.ts'
+import type { Category, Norm, Skip } from '../app/model.ts'
 import { activeCategories, sortCategories } from '../modules/food/catalog.ts'
 import {
   FORMS,
@@ -34,6 +34,7 @@ import {
   type DayIndex,
   type NormInput,
 } from '../modules/food/norms.ts'
+import { periodSkips, skipLineText } from '../modules/food/skips.ts'
 import { useFood, type Food } from '../modules/food/useFood.ts'
 import { dayHref, loggedText, viewedWeek, weekKcalText, weekSummary, type WeekSummary } from '../modules/food/week.ts'
 import { BarChart, MiniBars } from '../shared/ui/BarChart.tsx'
@@ -135,11 +136,13 @@ function WeekBody({ monday, today, data }: { monday: DateStr; today: DateStr; da
   const dishes = new Map(data.dishes.map((dish) => [dish.id, dish]))
   const summary = weekSummary(data.intake, dishes, data.categories, monday, today)
   const index = indexDays(data.intake, dishes)
+  const skips = periodSkips(data.skips, data.intake, summary.period)
 
   return (
     <>
       {error && <p className="error">{error}</p>}
       <p className="lead">{loggedText(summary)}</p>
+      <SkipsBlock skips={skips} />
       <NormsBlock monday={monday} today={today} data={data} index={index} save={save} />
       {summary.records > 0 && (
         <>
@@ -150,6 +153,29 @@ function WeekBody({ monday, today, data }: { monday: DateStr; today: DateStr; da
         </>
       )}
     </>
+  )
+}
+
+/**
+ * Приёмы, отмеченные «Не было» (Р-59): число и под ним — день, приём,
+ * причина. Не пропуск — и ккал недели без поправок: съедено то, что записано.
+ * Тап — день на «Сегодня». Отметок нет — строки нет.
+ */
+function SkipsBlock({ skips }: { skips: Skip[] }) {
+  if (skips.length === 0) return null
+  return (
+    <div className="week-skips">
+      <p>Приёмов не было: {skips.length}</p>
+      <ul className="plain">
+        {skips.map((skip) => (
+          <li key={skip.id}>
+            <a className="muted" href={dayHref(skip.date)}>
+              {skipLineText(skip)}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
