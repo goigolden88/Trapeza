@@ -1162,8 +1162,9 @@ async function demoScenario() {
   // ─ Вход: перезагрузка, полоса, данные от сегодняшнего дня.
   await unfold('Демо-данные')
   await markOld()
-  await act(`byText('button', 'Открыть демо')?.click()`)
+  await act(`window.confirm = (text) => { localStorage.setItem('smokeEnterAsked', text); return true }; byText('button', 'Открыть демо')?.click()`)
   await loaded(`document.querySelector('.demo-bar') !== null`, 'полоса демо после перезагрузки')
+  check('«Открыть демо» в настройках спрашивает — Я-46 «FamilyCore»', String(await run(`localStorage.getItem('smokeEnterAsked')`)).includes('сотрётся при выходе'))
   await go('/')
   await waitFor(TODAY_READY, 'приёмы на «Сегодня» в демо')
   const today = await screen()
