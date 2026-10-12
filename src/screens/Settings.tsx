@@ -11,6 +11,7 @@ import { importPrompt, KIND_ORDER, KINDS, markdownExport, planImport } from '../
 import { reminders } from '../notify.ts'
 import type { ReminderStatus, ReminderWindow, RemindResult, Wake } from '../shared/notify.ts'
 import { backupNote, backupSummary } from '../shared/ui/backup.ts'
+import { DemoSettings } from '../shared/ui/Demo.tsx'
 import { Fold } from '../shared/ui/Fold.tsx'
 import { InstallNote } from '../shared/ui/Install.tsx'
 import { ReportBug } from '../shared/ui/Report.tsx'
@@ -51,7 +52,8 @@ function describe(error: unknown): string {
  *
  * Разделы: «Синхронизация» — первой, «Экспорт и импорт» — копия файлом
  * импорт записей и markdown за период (Р-34), «Основные приёмы» (Р-59),
- * «Напоминания» (Р-30) и «О приложении».
+ * «Напоминания» (Р-30), «Демо-данные» (Я-44 «FamilyCore») и «О приложении».
+ * В демо «Синхронизации» нет — её прячет ядро.
  */
 export function Settings() {
   const [state, setState] = useState<State>({ status: 'loading' })
@@ -90,6 +92,8 @@ export function Settings() {
       <MainMealsSettings />
 
       <Reminders />
+
+      <DemoSettings />
 
       <About state={state} />
     </>

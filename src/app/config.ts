@@ -10,6 +10,7 @@
 
 import type { AppConfig } from '../shared/core/model.ts'
 import { summary } from '../modules/food/digest.ts'
+import { demo } from '../screens/demo.ts'
 import { migrations, SCHEMA_VERSION, SYNCED_STORES, type StoreRecord } from './model.ts'
 
 export const config: AppConfig<StoreRecord> = {
@@ -81,6 +82,10 @@ export const config: AppConfig<StoreRecord> = {
   // Срез итогов для метаприложения — `summary.json` в репозитории данных
   // (Р-55; Я-16 «FamilyCore»). Пишет проход синхронизации, приложение не читает.
   summary,
+
+  // Демо-данные от дня входа (Я-44, Я-45 «FamilyCore»): своя база
+  // `trapeza-demo` без синхронизации. Полноту сторожит `screens/demo.test.ts`.
+  demo,
 
   about: {
     data: 'учёт еды: что съедено, в каком приёме, блюда и нормы недели',

@@ -40,6 +40,7 @@ import {
   type Unanswered,
 } from '../modules/food/usual.ts'
 import { weekRoute } from '../modules/food/week.ts'
+import { DemoOffer } from '../shared/ui/Demo.tsx'
 import { Fold } from '../shared/ui/Fold.tsx'
 import { IosNote } from '../shared/ui/Install.tsx'
 import { useNow } from '../shared/ui/useNow.ts'
@@ -153,6 +154,10 @@ export function Today() {
           </button>
         )}
       </header>
+
+      {/* Демо — один раз, на пустой базе без токена «семья» (Я-45 «FamilyCore»).
+          В счёт — тот же список, что у первого запуска. */}
+      <DemoOffer own={config.stores} />
 
       {/* Первый запуск: пока база пуста и приветствие не закрыли. */}
       {first.welcome && <Welcome onDone={first.dismissWelcome} />}

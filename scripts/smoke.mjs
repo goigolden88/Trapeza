@@ -402,6 +402,8 @@ const github = {
   reject: false,
   /** Связи нет — запрос обрывается, как без сети. */
   down: false,
+  /** Сколько запросов страницы перехвачено: в демо их не должно прибавиться. */
+  requests: 0,
   seq: 0,
 }
 
@@ -554,6 +556,7 @@ const CORS = [
  */
 async function onGitHub({ requestId, request }) {
   debug(`перехвачен ${request.method} ${request.url}`)
+  github.requests += 1
   if (github.down) {
     await send('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' })
     return
@@ -657,6 +660,8 @@ async function scenario() {
     `${TODAY_READY} && document.querySelector('#root').innerText.toLowerCase().includes('с чего начать')`,
     'приветствие на пустой базе',
   )
+  // Предложение демо ждёт ещё и общую базу семьи: токена нет — предлагает.
+  await waitFor(`document.querySelector('.demo-offer') !== null`, 'предложение демо на пустой базе')
   const start = await screen()
   check(
     '«Сегодня» открылось; пустая база ведёт к блюдам и импорту',
@@ -678,11 +683,20 @@ async function scenario() {
       has(start, 'справка') && !has(start, 'Делу Время') && !has(start, 'Что нового'),
     line(start, 'учёт еды'),
   )
+  check(
+    'пустая база без токена — «Посмотреть на демо-данных?» с «Открыть демо» и «Нет, начну своё» — Я-45 «FamilyCore»',
+    has(start, 'Посмотреть на демо-данных?') && has(start, 'Открыть демо') && has(start, 'Нет, начну своё'),
+    line(start, 'демо'),
+  )
+  await act(`byText('button', 'Нет, начну своё')?.click()`)
+  await sleep(400)
   await act(`byText('button', 'Понятно')?.click()`)
   await sleep(400)
   await reload()
   await settle()
-  check('«Понятно» убирает приветствие и после перезапуска', !has(await screen(), 'С чего начать'))
+  const declined = await screen()
+  check('«Понятно» убирает приветствие и после перезапуска', !has(declined, 'С чего начать'))
+  check('«Нет, начну своё» — предложение демо больше не появляется', !has(declined, 'Посмотреть на демо-данных'))
   const database = await run(`indexedDB.databases().then((list) => list.map((each) => each.name).sort().join(', '))`)
   check(
     'база данных называется trapeza, рядом — общая база семьи family (Р-10, Я-35 «FamilyCore»)',
@@ -712,6 +726,7 @@ async function scenario() {
     settings.replace(/\s+/g, ' ').slice(0, 160),
   )
   check('у свёрнутого «Экспорт и импорт» видно, что копии нет', has(settings, 'копии нет'))
+  check('в «Настройках» есть «Демо-данные» — вход в демо после отказа', has(settings, 'Демо-данные'))
   check(
     'в «Настройках» синхронизация — первым разделом',
     settings.indexOf('СИНХРОНИЗАЦИЯ') !== -1 && settings.indexOf('СИНХРОНИЗАЦИЯ') < settings.indexOf('ЭКСПОРТ И ИМПОРТ'),
@@ -1107,6 +1122,125 @@ async function scenario() {
   await helpScenario()
   await repeatScenario()
   await skipScenario()
+  await demoScenario()
+}
+
+/** День `ago` дней назад по часам страницы — как `today()` в приложении. */
+const daysAgo = (ago) =>
+  run(`(() => {
+    const d = new Date(); d.setDate(d.getDate() - ${ago})
+    const pad = (n) => String(n).padStart(2, '0')
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+  })()`)
+
+/** Заголовки разделов на экране. */
+const foldTitles = () => run(`[...document.querySelectorAll('.fold__btn')].map((el) => el.textContent.trim())`)
+
+/** Базы IndexedDB страницы, через запятую. */
+const databases = () => run(`indexedDB.databases().then((list) => list.map((each) => each.name).sort().join(', '))`)
+
+/**
+ * Демо-данные (Я-44, Я-45 «FamilyCore»). Последним: база с записями и токеном
+ * «семья» — предложения нет, вход из «Настроек». Синхронизация включена:
+ * в демо она молчит потому, что её нет, а не потому, что выключена.
+ */
+async function demoScenario() {
+  await go('/')
+  await settle()
+  check('база с записями и токеном — предложения демо нет', !has(await screen(), 'Посмотреть на демо-данных'))
+
+  await send('Fetch.enable', { patterns: [{ urlPattern: 'https://api.github.com/*' }] })
+  const before = github.requests
+  await go('/settings')
+  await unfold('Синхронизация')
+  await act(`document.querySelector('.check input')?.click()`)
+  await sleep(500)
+  await act(`byText('button', 'Синхронизировать')?.click()`)
+  await sleep(2500)
+  const synced = github.requests
+
+  // ─ Вход: перезагрузка, полоса, данные от сегодняшнего дня.
+  await unfold('Демо-данные')
+  await markOld()
+  await act(`byText('button', 'Открыть демо')?.click()`)
+  await loaded(`document.querySelector('.demo-bar') !== null`, 'полоса демо после перезагрузки')
+  await go('/')
+  await waitFor(TODAY_READY, 'приёмы на «Сегодня» в демо')
+  const today = await screen()
+  const todayBreakfast = await mealSummary('Завтрак')
+  const yesterday = await daysAgo(1)
+  await go(`/?day=${yesterday}`)
+  const yesterdayMeals = [await mealSummary('Завтрак'), await mealSummary('Обед'), await mealSummary('Ужин')]
+  check(
+    'демо: полоса «Демо: данные выдуманные · Выйти», на «Сегодня» — завтрак, вчера — все приёмы',
+    has(today, 'Демо: данные выдуманные') &&
+      has(today, 'Выйти') &&
+      todayBreakfast === '· 2 блюда' &&
+      yesterdayMeals.join(' / ') === '· 2 блюда / · 4 блюда / · 2 блюда',
+    `сегодня ${todayBreakfast}; вчера ${yesterdayMeals.join(' / ')}`,
+  )
+
+  await go(`/week?w=${await daysAgo(7)}`)
+  const sweet = await run(`document.querySelector('[aria-label="Поправить норму: Сладкое"]')?.textContent.trim() ?? ''`)
+  const week = await screen()
+  check(
+    'демо: в прошлой неделе нормы, «Сладкое» не уложилось',
+    /^Сладкое: \d+ дн\S* при пределе 2$/.test(sweet) && has(week, 'Каши:') && has(week, 'Рыба:') && has(week, 'Демо: данные выдуманные'),
+    sweet,
+  )
+
+  await go('/dishes')
+  const dishes = await screen()
+  check(
+    'демо: в «Блюдах» категории и блюда',
+    ['Каши', 'Супы', 'Сладости', 'Напитки'].every((name) => has(dishes, name)) && has(dishes, 'Демо: данные выдуманные'),
+    line(dishes, 'Каши'),
+  )
+
+  await go('/settings')
+  await unfold('Демо-данные')
+  const titles = (await foldTitles()) ?? []
+  const settings = await screen()
+  check(
+    'демо: в «Настройках» нет «Синхронизации», в «Демо-данных» — «Выйти из демо»',
+    !titles.includes('Синхронизация') && titles.includes('Демо-данные') && has(settings, 'Выйти из демо'),
+    titles.join(', '),
+  )
+  check('демо живёт в своей базе trapeza-demo', (await databases())?.includes('trapeza-demo'), await databases())
+
+  // Автопроход ждёт тишины пять секунд — даём ему повод и время.
+  await sleep(6000)
+  check(
+    'в демо ни одного запроса к GitHub, хотя до входа синхронизация ходила',
+    synced > before && github.requests === synced,
+    `до входа ${synced - before}, в демо ${github.requests - synced}`,
+  )
+
+  // ─ Выход: «Отмена» оставляет демо, «ОК» стирает его.
+  await act(`window.confirm = () => false; document.querySelector('.demo-bar__leave')?.click()`)
+  await sleep(700)
+  check('«Выйти» → «Отмена» — остаюсь в демо', (await run(`document.querySelector('.demo-bar') !== null`)) === true)
+
+  await markOld()
+  await act(`window.confirm = () => true; document.querySelector('.demo-bar__leave')?.click()`)
+  await loaded(`document.querySelector('.demo-bar') === null`, 'страница без полосы демо после выхода')
+  await go('/settings')
+  await unfold('О приложении')
+  const after = await screen()
+  const left = await databases()
+  check(
+    '«Выйти» → «ОК» — демо стёрто, полосы нет, свои записи на месте, синхронизация вернулась',
+    !has(after, 'Демо: данные выдуманные') &&
+      !left?.includes('trapeza-demo') &&
+      /(?:^|\n)Записи еды\s*[1-9]/.test(after.replace(/ /g, ' ')) &&
+      ((await foldTitles()) ?? []).includes('Синхронизация'),
+    `базы: ${left}; ${line(after, 'Записи еды')}`,
+  )
+
+  await unfold('Синхронизация')
+  await act(`document.querySelector('.check input')?.click()`)
+  await sleep(500)
+  await send('Fetch.disable')
 }
 
 /**
