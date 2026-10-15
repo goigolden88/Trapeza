@@ -1997,6 +1997,29 @@ async function weekScenario() {
       JSON.stringify(todayOrder) === JSON.stringify(['Главная', 'Сладкое']),
     `${JSON.stringify(added)} → ${JSON.stringify(moved)}; «выше» у первой ${firstDisabled ? 'выключена' : 'включена'}; «Сегодня» ${JSON.stringify(todayOrder)}`,
   )
+
+  // Удаление нормы спрашивает: «Отмена» — норма на месте, «ОК» — удалена.
+  await go('/week?w=2026-02-18')
+  await unfold('Нормы')
+  const removeNorm = async (answer) => {
+    await act(`document.querySelector('[aria-label="Поправить норму: Главная"]')?.click()`)
+    await sleep(400)
+    await act(`window.confirm = (text) => { localStorage.setItem('smokeNormAsked', text); return ${answer} }; byText('button', 'Удалить')?.click()`)
+    await sleep(900)
+    if (!answer) await act(`byText('button', 'Отмена')?.click()`)
+    await sleep(400)
+    return normNames()
+  }
+  const kept = await removeNorm(false)
+  const normAsked = await run(`localStorage.getItem('smokeNormAsked')`)
+  const removed = await removeNorm(true)
+  check(
+    'удаление нормы спрашивает: «Отмена» — норма на месте, подтверждение — удалена',
+    normAsked === 'Удалить норму «Главная»? Записи еды останутся.' &&
+      JSON.stringify(kept) === JSON.stringify(['Главная', 'Сладкое']) &&
+      JSON.stringify(removed) === JSON.stringify(['Сладкое']),
+    `${normAsked}; ${JSON.stringify(kept)} → ${JSON.stringify(removed)}`,
+  )
 }
 
 /**
