@@ -328,6 +328,11 @@ function NormEditor({
     if (await save(() => db.put('norms', record))) onDone()
   }
 
+  async function remove(norm: Norm) {
+    if (!window.confirm(`Удалить норму «${norm.name}»? Записи еды останутся.`)) return
+    if (await save(() => db.remove('norms', norm.id))) onDone()
+  }
+
   function toggle(id: string, on: boolean) {
     const rest = input.categoryIds.filter((each) => each !== id)
     setInput({ ...input, categoryIds: on ? [...rest, id] : rest })
@@ -412,7 +417,7 @@ function NormEditor({
           <button
             type="button"
             className="btn btn--danger"
-            onClick={() => void save(() => db.remove('norms', norm.id)).then((done) => done && onDone())}
+            onClick={() => void remove(norm)}
           >
             Удалить
           </button>
