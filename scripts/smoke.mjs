@@ -1122,6 +1122,7 @@ async function scenario() {
   await helpScenario()
   await repeatScenario()
   await skipScenario()
+  await clearScenario()
   await demoScenario()
 }
 
@@ -1341,6 +1342,55 @@ async function skipScenario() {
     noSkip && written === '· 1 блюдо',
     `«Не было» ${noSkip ? 'нет' : 'есть'}; ${written}`,
   )
+}
+
+/**
+ * «Очистить» у приёма: спрашивает, «Отмена» оставляет записи, «ОК» убирает
+ * записи только этого приёма. На 12 марта, где других записей нет: что
+ * записано здесь, здесь же и стирается — счётчики прочих проверок не сдвигаются.
+ */
+async function clearScenario() {
+  await go('/?day=2026-03-12')
+  await openMeal('Завтрак')
+  await tapChip('Щи')
+  await sleep(500)
+  await tapChip('Компот')
+  await sleep(500)
+  await openMeal('Обед')
+  await tapChip('Борщ')
+  await sleep(800)
+  const written = [await mealSummary('Завтрак'), await mealSummary('Обед')]
+
+  // ─ «Отмена»: вопрос задан, записи на месте.
+  await act(`window.confirm = (text) => { localStorage.setItem('smokeClearAsked', text); return false }`)
+  await clickInMeal('Завтрак', 'Очистить')
+  await sleep(800)
+  const asked = String(await run(`localStorage.getItem('smokeClearAsked')`))
+  const kept = await mealSummary('Завтрак')
+  check(
+    '«Очистить» у приёма спрашивает; «Отмена» — записи на месте',
+    written.join(' / ') === '· 2 блюда / · 1 блюдо' && asked.startsWith('Очистить завтрак за ') && asked.includes('2 блюда') && kept === '· 2 блюда',
+    `записано ${written.join(' / ')}; вопрос «${asked}»; после «Отмены» ${kept}`,
+  )
+
+  // ─ «ОК»: завтрак пуст, обед того же дня не тронут.
+  await act(`window.confirm = () => true`)
+  await clickInMeal('Завтрак', 'Очистить')
+  await sleep(1200)
+  const note = await status()
+  const cleared = await mealSummary('Завтрак')
+  const lunch = await mealSummary('Обед')
+  const clearButton = (await buttonsInMeal('Завтрак'))?.includes('Очистить')
+  check(
+    '«Очистить» → «ОК» — записи приёма удалены, соседний приём на месте',
+    cleared === '· не записан' && !clearButton && lunch === '· 1 блюдо' && has(note, 'очищен: 2 блюда'),
+    `${cleared}; обед ${lunch}; «${note}»`,
+  )
+
+  // Обед — тем же путём: день снова пуст.
+  await clickInMeal('Обед', 'Очистить')
+  await sleep(1200)
+  await run(`localStorage.removeItem('smokeClearAsked')`)
 }
 
 /** Значение числовой константы из исходника: справка обязана сказать ровно его. */
