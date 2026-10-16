@@ -126,7 +126,7 @@ export type NormHistory = {
 }
 
 /** Понедельник не раньше дня: неделя, начатая до `since`, не судится (их Р-56). */
-function mondayFrom(day: DateStr): DateStr {
+export function mondayFrom(day: DateStr): DateStr {
   const monday = weekStart(day)
   return monday === day ? day : addDays(monday, 7)
 }
