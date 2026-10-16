@@ -711,6 +711,15 @@ span.plan-item__text {
   text-align: center;
 }
 
+/* Месяц между стрелками (Р-61): листается стрелками, календаря нет. */
+.day-nav__month {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+}
+
 /* Обзор недели: мысль возврата и наблюдение — как записаны, с переносами строк. */
 .recall {
   white-space: pre-wrap;

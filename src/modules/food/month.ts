@@ -94,6 +94,19 @@ function monthNorm(norm: Norm, index: DayIndex, weeks: readonly Period[], today:
   return line
 }
 
+/** Недели месяца и их охват — с понедельника первой по воскресенье последней. */
+export function monthWeeks(month: MonthStr): { weeks: Period[]; span: Period } {
+  const weeks = weeksEndingIn(monthPeriod(month))
+  const first = weeks[0]
+  const last = weeks[weeks.length - 1]
+  return { weeks, span: first && last ? { from: first.from, to: last.to } : monthPeriod(month) }
+}
+
+/** Идёт ли сегодня одна из недель месяца. */
+export function monthGoing(weeks: readonly Period[], today: DateStr): boolean {
+  return weeks.some((week) => week.from <= today && today <= week.to)
+}
+
 /** Итог месяца `month` на день `today`: недели, ещё не начавшиеся, пусты. */
 export function monthSummary(
   intake: readonly Intake[],
@@ -104,10 +117,7 @@ export function monthSummary(
   month: MonthStr,
   today: DateStr,
 ): MonthSummary {
-  const weeks = weeksEndingIn(monthPeriod(month))
-  const first = weeks[0]
-  const last = weeks[weeks.length - 1]
-  const span = first && last ? { from: first.from, to: last.to } : monthPeriod(month)
+  const { weeks, span } = monthWeeks(month)
   const kcal: KcalSum = { kcal: 0, counted: 0, total: 0 }
   let records = 0
   let logged = 0
@@ -127,7 +137,7 @@ export function monthSummary(
     weeks,
     span,
     days: weeks.length * WEEK_DAYS,
-    current: weeks.some((week) => week.from <= today && today <= week.to),
+    current: monthGoing(weeks, today),
     records,
     logged,
     elapsed,

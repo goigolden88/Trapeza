@@ -1982,6 +1982,46 @@ async function weekScenario() {
   )
   check('приёмы по дням: обед и ужин понедельника', /(?:^|\n)пн 16\s+—\s+1\s+1\s+—(?:\n|$)/.test(full), line(full, 'пн 16'))
 
+  // ─ «Месяц» (Р-61): переключатель открывает текущий месяц, вперёд не листается.
+  await act(`byText('button', 'Месяц')?.click()`)
+  await sleep(700)
+  const thisMonth = await run(`({
+    hash: location.hash,
+    title: document.querySelector('.day-nav__month')?.textContent ?? '',
+    next: document.querySelector('[aria-label="Следующий месяц"]')?.disabled ?? null,
+  })`)
+  check(
+    '«Неделя» → «Месяц»: текущий месяц, дальше не листается, неделя осталась в адресе — Р-61',
+    thisMonth?.hash === `#/week?w=2026-02-16&m=${localMonth()}` && thisMonth.next === true && thisMonth.title !== '',
+    JSON.stringify(thisMonth),
+  )
+  // Февраль — недели с воскресеньем в нём: 26 января – 22 февраля. Неделя
+  // 23 февраля – 1 марта — мартовская.
+  await go('/week?w=2026-02-16&m=2026-02')
+  await unfoldAll()
+  const february = (await screen()).replace(/ /g, ' ')
+  check(
+    '«Месяц» — недели месяца, учёт с основанием, норма числом недель — Р-61',
+    has(february, 'Февраль 2026') &&
+      has(february, 'Недели 26 января – 22 февраля 2026') &&
+      !has(february, '· идёт') &&
+      /Учёт в \d+ (дне|днях) из 28/.test(february) &&
+      /(?:^|\n)Сладкое: выполнена в \d+ (неделе|неделях) из \d+/.test(february) &&
+      has(february, 'ккал в день — за'),
+    `${line(february, 'Недели')}; ${line(february, 'Учёт в')}; ${line(february, 'Сладкое:')}; ${line(february, 'ккал в день')}`,
+  )
+  await go('/week?w=2026-02-16&m=2025-06')
+  const emptyMonth = await screen()
+  check('месяц без записей — «Записей нет», а не нули — Р-61', has(emptyMonth, 'Записей нет') && !has(emptyMonth, 'Учёт в'), line(emptyMonth, 'Записей'))
+  await act(`byText('button', 'Неделя')?.click()`)
+  await sleep(700)
+  const back = await screen()
+  check(
+    '«Неделя» возвращает к той же неделе',
+    (await run('location.hash')) === '#/week?w=2026-02-16' && has(back, '16–22 февраля 2026'),
+    `${await run('location.hash')}; ${line(back, 'февраля')}`,
+  )
+
   // ─ «Сегодня» (Р-25): суббота 21 февраля — сладкое уже 5 дней недели.
   // Торт в обед — строка нормы меняется сразу, и после тапа она названа;
   // второй тап — порция, день уже в счёте.
@@ -2155,10 +2195,10 @@ async function syncScenario() {
   // Форму целиком проверяют тесты `checkSummary`; здесь — что файл доехал.
   const digest = repoRecords('summary.json')
   check(
-    'срез итогов summary.json уехал тем же коммитом: форма 1, четыре отрезка, месяцы — not-provided',
+    'срез итогов summary.json уехал тем же коммитом: форма 1, четыре отрезка, месяцы считаются — Р-61',
     digest?.format === 1 &&
       digest.periods?.length === 4 &&
-      digest.periods.slice(2).every((period) => period.metrics?.unknown === 'not-provided') &&
+      digest.periods.slice(2).every((period) => period.grain === 'month' && period.metrics?.unknown !== 'not-provided') &&
       Array.isArray(digest.attention),
     JSON.stringify(digest)?.slice(0, 120) ?? 'файла нет',
   )
