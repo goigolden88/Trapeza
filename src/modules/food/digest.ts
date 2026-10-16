@@ -11,7 +11,7 @@
  * Заметки записей и рецепты в срез не идут никогда (Я-14).
  */
 
-import { addDays, days, isDateStr, plural, type DateStr } from '../../shared/core/dates.ts'
+import { addDays, days, formatPeriod, isDateStr, monthOf, plural, type DateStr } from '../../shared/core/dates.ts'
 import {
   summaryPeriods,
   UNKNOWN,
@@ -25,6 +25,7 @@ import type { Dish, Meal, StoreRecord } from '../../app/model.ts'
 import { dayLink } from './feed.ts'
 import { MEAL_NAMES, normRuleText } from './labels.ts'
 import { activeNorms, checkWeek, indexDays, type DayIndex } from './norms.ts'
+import { monthNormText, monthSummary } from './month.ts'
 import { MAIN_MEALS, readMainMeals, skippedKeys } from './skips.ts'
 import { missedMeals } from './usual.ts'
 import { loggedText, weekSummary } from './week.ts'
@@ -39,11 +40,8 @@ const RECORDS: [string, string, string] = ['запись', 'записи', 'за
 const RECORDS_OF: [string, string, string] = ['записи', 'записей', 'записей']
 const RECORDS_BY: [string, string, string] = ['записи', 'записям', 'записям']
 
-/** Месяц «Трапеза» пока не считает: новый расчёт и отдельное решение (Я-19, п. 1 «FamilyCore»). */
-const MONTH: Unknown = {
-  unknown: UNKNOWN.notProvided,
-  text: 'Итог месяца «Трапеза» пока не считает: её ритм — неделя',
-}
+const DAYS_OF: [string, string, string] = ['дня', 'дней', 'дней']
+const PASSED_OF: [string, string, string] = ['наступившего дня', 'наступивших дней', 'наступивших дней']
 
 /** Порции — до сотых: доли от граммов не должны менять файл от прохода к проходу. */
 function round2(value: number): number {
@@ -78,7 +76,7 @@ function weekMetrics(data: DigestData, dishes: ReadonlyMap<string, Dish>, index:
       label: 'Дни учёта',
       value: { n: week.logged, unit: 'days' },
       basis: current
-        ? `Из ${week.elapsed} ${plural(week.elapsed, ['наступившего дня', 'наступивших дней', 'наступивших дней'])} недели`
+        ? `Из ${week.elapsed} ${plural(week.elapsed, PASSED_OF)} недели`
         : `Из ${days(week.days.length)} недели`,
     },
     { key: 'intake.records', label: 'Записей', value: { n: week.records, unit: 'count' }, basis: logged },
@@ -116,6 +114,61 @@ function weekMetrics(data: DigestData, dishes: ReadonlyMap<string, Dish>, index:
       label: `Норма: ${norm.name}`,
       value: { verdict: check.verdict },
       basis: `${normRuleText(norm)}: ${days(check.days)} с записью${unknown}`,
+    })
+  }
+  return metrics
+}
+
+/**
+ * Месяц — сводка его недель (Р-61): дни учёта, записи, ккал в день учёта
+ * и нормы числом выполненных недель — теми же функциями, что экран. Концы
+ * отрезка — календарные, как дало ядро; какие недели в счёте — в основании.
+ */
+function monthMetrics(data: DigestData, dishes: ReadonlyMap<string, Dish>, index: DayIndex, from: DateStr, day: DateStr): Metric[] | Unknown {
+  const month = monthSummary(data.intake, dishes, data.categories, data.norms, index, monthOf(from), day)
+  if (month.records === 0) {
+    return { unknown: UNKNOWN.noData, text: 'За недели месяца ни одной записи: «не ел» и «не записывал» учёт не различает' }
+  }
+  const weeks = `недели ${formatPeriod(month.span)}`
+  const going = month.elapsed < month.days
+  const { kcal, counted, total } = month.kcal
+
+  const metrics: Metric[] = [
+    {
+      key: 'intake.logged',
+      label: 'Дни учёта',
+      value: { n: month.logged, unit: 'days' },
+      basis: going
+        ? `Из ${month.elapsed} ${plural(month.elapsed, PASSED_OF)}; ${weeks}`
+        : `Из ${month.days} ${plural(month.days, DAYS_OF)}; ${weeks}`,
+    },
+    {
+      key: 'intake.records',
+      label: 'Записей',
+      value: { n: month.records, unit: 'count' },
+      basis: going ? `${loggedText(month)} наступивших` : loggedText(month),
+    },
+    {
+      key: 'kcal.perDay',
+      label: 'Ккал в день учёта',
+      value:
+        counted === 0
+          ? { unknown: NO_KCAL, text: `Ккал не известны ни у одной из ${total} ${plural(total, RECORDS_OF)}` }
+          : { n: Math.round(kcal / month.logged), unit: 'kcal' },
+      basis: `В среднем за ${month.logged} ${plural(month.logged, ['день', 'дня', 'дней'])} учёта, по ${counted} из ${total} ${plural(total, RECORDS_OF)}`,
+    },
+  ]
+
+  for (const line of month.norms) {
+    const text = `${normRuleText(line.norm)} в неделю: ${monthNormText(line)}`
+    metrics.push({
+      key: `norm.${line.norm.id}`,
+      label: `Норма: ${line.norm.name}`,
+      value:
+        line.counted === 0
+          ? { unknown: UNKNOWN.notEnough, text: `Ни одной недели месяца с ясным исходом: ${monthNormText(line)}` }
+          : { n: line.met, unit: 'count' },
+      basis: text,
     })
   }
   return metrics
@@ -160,7 +213,10 @@ export function summary(data: DigestData, day: DateStr): SummaryBody {
     periods: summaryPeriods(day).map((period) => ({
       ...period,
       through: isCurrent(period, day) ? day : null,
-      metrics: period.grain === 'week' ? weekMetrics(data, dishes, index, period.from, day) : MONTH,
+      metrics:
+        period.grain === 'week'
+          ? weekMetrics(data, dishes, index, period.from, day)
+          : monthMetrics(data, dishes, index, period.from, day),
     })),
     attention: attentionOf(data, day),
   }

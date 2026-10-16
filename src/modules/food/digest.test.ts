@@ -78,10 +78,9 @@ describe('срез итогов — форма договора (Я-17, Р-55)',
     ])
   })
 
-  it('месяцы — not-provided со словами (Я-19, п. 1)', () => {
+  it('месяцы считаются — not-provided больше нет (Р-61)', () => {
     for (const period of summary(data, DAY).periods.slice(2)) {
-      expect(period.metrics).toMatchObject({ unknown: UNKNOWN.notProvided })
-      expect(period.metrics).toHaveProperty('text', expect.stringContaining('месяц'))
+      expect(period.metrics).not.toMatchObject({ unknown: UNKNOWN.notProvided })
     }
   })
 
@@ -174,6 +173,58 @@ describe('нормы — вердикт экрана «Неделя» (Р-24, Р
 
   it('удалённой нормы нет', () => {
     expect(metricsOf(last).some((each) => each.key === 'norm.01NORMGONE')).toBe(false)
+  })
+})
+
+describe('месяц — сводка недель экрана, неделя — в месяце воскресенья (Р-61)', () => {
+  // Февраль: недели 26 января – 22 февраля; идёт третья, четвёртая впереди.
+  const [, , previous, current] = summary(data, DAY).periods
+
+  it('концы — календарные, как дало ядро; недели — в основании', () => {
+    expect(current).toMatchObject({ from: '2026-02-01', to: '2026-02-28', through: DAY })
+    expect(metric(current, 'intake.logged')).toMatchObject({
+      value: { n: 7, unit: 'days' },
+      basis: 'Из 17 наступивших дней; недели 26 января – 22 февраля 2026',
+    })
+    expect(metric(current, 'intake.records')).toMatchObject({ value: { n: 9 }, basis: 'Учёт в 7 днях из 17 наступивших' })
+  })
+
+  it('ккал в среднем на день учёта — по скольким записям', () => {
+    expect(metric(current, 'kcal.perDay')).toMatchObject({
+      value: { n: 257, unit: 'kcal' },
+      basis: 'В среднем за 7 дней учёта, по 7 из 9 записей',
+    })
+  })
+
+  it('норма — числом выполненных недель, с правилом и неделями вне счёта', () => {
+    expect(metric(current, 'norm.01NORMSWEET')).toEqual({
+      key: 'norm.01NORMSWEET',
+      label: 'Норма: Сладкое',
+      value: { n: 0, unit: 'count' },
+      basis:
+        'не больше 2 дней в неделю: выполнена в 0 неделях из 1 · 1 неделя без записей · идущая неделя пока не ясна',
+    })
+    expect(metricsOf(current).some((each) => each.key === 'norm.01NORMGONE')).toBe(false)
+  })
+
+  it('недель в счёт нет — not-enough со словами, а не ноль', () => {
+    const month = summary({ ...data, intake: [eaten('2026-02-10', 'lunch', 'Торт')] }, DAY).periods[3]
+    expect(metric(month, 'norm.01NORMSWEET').value).toMatchObject({ unknown: UNKNOWN.notEnough })
+  })
+
+  it('закончившийся — из всех дней его недель', () => {
+    const march = summary(data, '2026-03-04').periods[2]
+    expect(march).toMatchObject({ from: '2026-02-01', through: null })
+    expect(metric(march, 'intake.logged').basis).toBe('Из 28 дней; недели 26 января – 22 февраля 2026')
+  })
+
+  it('месяц без записей — no-data целиком', () => {
+    expect(previous?.metrics).toMatchObject({ unknown: UNKNOWN.noData })
+  })
+
+  it('ккал не известны ни у одной — no-kcal', () => {
+    const month = summary({ ...data, intake: [eaten('2026-02-10', 'lunch', 'Сырок')] }, DAY).periods[3]
+    expect(metric(month, 'kcal.perDay').value).toMatchObject({ unknown: NO_KCAL })
   })
 })
 

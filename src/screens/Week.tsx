@@ -1,7 +1,17 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { db } from '../app/core.ts'
-import { addDays, days as daysText, formatDateLong, formatPeriod, nowIso, plural, weekStart, type DateStr } from '../shared/core/dates.ts'
+import {
+  addDays,
+  days as daysText,
+  formatDateLong,
+  formatPeriod,
+  monthOf,
+  nowIso,
+  plural,
+  weekStart,
+  type DateStr,
+} from '../shared/core/dates.ts'
 import { ulid } from '../shared/core/id.ts'
 import type { Category, Norm, Skip } from '../app/model.ts'
 import { activeCategories, sortCategories } from '../modules/food/catalog.ts'
@@ -40,6 +50,7 @@ import { dayHref, loggedText, viewedWeek, weekKcalText, weekSummary, type WeekSu
 import { BarChart, MiniBars } from '../shared/ui/BarChart.tsx'
 import { Fold } from '../shared/ui/Fold.tsx'
 import { useToday } from '../shared/ui/useToday.ts'
+import { Month, ViewToggle } from './Month.tsx'
 
 type Data = Food['data']
 
@@ -56,7 +67,8 @@ function describe(error: unknown): string {
  *
  * Любая неделя — `?w=` с любым её днём; без параметра — текущая, в будущее
  * не листается. Отклик без цвета (Р-23), неделя в счёт истории — по ясному
- * исходу (Р-24).
+ * исходу (Р-24). Переключатель «Неделя / Месяц» — итог месяца сводкой недель
+ * (Р-61), `Month.tsx`.
  */
 export function Week() {
   const today = useToday()
@@ -66,16 +78,21 @@ export function Week() {
   const isCurrent = monday === current
   const food = useFood()
 
+  // «Месяц» (Р-61) — `?m=`; неделя остаётся в адресе, куда вернуться.
+  if (params.has('m')) return <Month today={today} food={food} />
+
   // Текущая — без параметра, как сегодняшний день на «Сегодня».
   const show = (day: DateStr) => {
     const next = viewedWeek(day, today)
     setParams(next === current ? {} : { w: next })
   }
+  const toMonth = () => setParams(isCurrent ? { m: monthOf(today) } : { w: monday, m: monthOf(today) })
 
   return (
     <>
       <header className="screen-head">
         <h1>Неделя</h1>
+        <ViewToggle month={false} onWeek={() => undefined} onMonth={toMonth} />
         <div className="day-nav">
           <button type="button" className="icon-btn" aria-label="Предыдущая неделя" onClick={() => show(addDays(monday, -7))}>
             ‹
