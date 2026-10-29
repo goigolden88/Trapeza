@@ -1123,6 +1123,7 @@ async function scenario() {
   await repeatScenario()
   await skipScenario()
   await clearScenario()
+  await removeScenario()
   await demoScenario()
 }
 
@@ -1391,6 +1392,153 @@ async function clearScenario() {
   await clickInMeal('Обед', 'Очистить')
   await sleep(1200)
   await run(`localStorage.removeItem('smokeClearAsked')`)
+}
+
+/** Строка списка на «Блюдах» — блюда или категории — по названию до « · ». */
+const rowOf = (name) =>
+  `[...document.querySelectorAll('li.cat')].find((li) => li.querySelector('.cat__name')?.textContent.trim().startsWith(${JSON.stringify(`${name} ·`)}))`
+
+/** Выбирает в списке строки вариант по его тексту — как человек, не зная id. */
+const pickOption = (select, label) => `
+  const select = ${select}
+  select.value = [...select.options].find((el) => el.textContent.trim() === ${JSON.stringify(label)})?.value ?? ''
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+`
+
+/** Кнопки блюд в выборе приёма. */
+const inMealPick = (meal) => `[...document.querySelectorAll('.meal')]
+  .find((el) => el.querySelector('.fold__btn')?.textContent.trim() === ${JSON.stringify(meal)})
+  ?.querySelectorAll('.meal__pick .chip') ?? []`
+
+/** Блюда в выборе обеда на открытом дне — со всех категорий, развёрнутых. */
+async function lunchChips() {
+  await openMeal('Обед')
+  await act(`document.querySelectorAll('.meal__pick .fold__btn[aria-expanded="false"]').forEach((el) => el.click())`)
+  await sleep(400)
+  return run(`[...(${inMealPick('Обед')})].map((el) => el.textContent.trim())`)
+}
+
+/** Записи обеда открытого дня — по подписи «Поправить: …». */
+const lunchRecords = () =>
+  run(`[...([...document.querySelectorAll('.meal')]
+    .find((el) => el.querySelector('.fold__btn')?.textContent.trim() === 'Обед')
+    ?.querySelectorAll('[aria-label^="Поправить: "]') ?? [])].map((el) => el.getAttribute('aria-label').slice('Поправить: '.length))`)
+
+/**
+ * Опасное на «Блюдах» (Р-12): удаление блюда и категории с переносом,
+ * «В архив» и «Вернуть». На своих блюдах, своих категориях и 13 марта,
+ * где других записей нет: счётчики прочих проверок не сдвигаются.
+ */
+async function removeScenario() {
+  const gone = 'Сырники прогона'
+  const kept = 'Оладьи прогона'
+  const from = 'Завтраки прогона'
+  const to = 'Выпечка прогона'
+
+  await go('/dishes')
+  await unfold('Категории')
+  for (const name of [from, to]) {
+    await act(`set(document.querySelector('[name="category-name"]'), ${JSON.stringify(name)})`)
+    await sleep(200)
+    await act(`byText('button', 'Добавить категорию')?.click()`)
+    await sleep(700)
+  }
+  await unfold('Новое блюдо')
+  for (const name of [gone, kept]) {
+    await act(`set(document.querySelector('[name="dish-name"]'), ${JSON.stringify(name)})`)
+    await sleep(200)
+    await act(pickOption(`document.querySelector('[name="dish-category"]')`, from))
+    await sleep(200)
+    await act(`byText('button', 'Добавить')?.click()`)
+    await sleep(700)
+  }
+
+  await go('/?day=2026-03-13')
+  await openMeal('Обед')
+  await tapChip(gone)
+  await sleep(800)
+  const written = await lunchRecords()
+
+  // ─ Блюдо с записью удаляется только переносом: запись уходит к другому блюду.
+  await go('/dishes')
+  await act(`set(document.querySelector('.search'), 'прогона')`)
+  await sleep(500)
+  await act(`${rowOf(gone)}?.querySelector('.cat__name').click()`)
+  await sleep(500)
+  await act(`[...(${rowOf(gone)}?.querySelectorAll('.cat__remove button') ?? [])].find((el) => el.textContent.trim() === 'Удалить')?.click()`)
+  await sleep(400)
+  await act(pickOption(`${rowOf(gone)}.querySelector('[name="dish-move-target"]')`, kept))
+  await sleep(300)
+  await act(`[...(${rowOf(gone)}?.querySelectorAll('button') ?? [])].find((el) => el.textContent.trim() === 'Перенести и удалить')?.click()`)
+  await sleep(1000)
+  const dishNames = await run(`[...document.querySelectorAll('li.cat .cat__name')].map((el) => el.textContent.trim().split(' · ')[0])`)
+  await go('/?day=2026-03-13')
+  const moved = await lunchRecords()
+  check(
+    '«Перенести и удалить» у блюда: запись дня — под другим блюдом, удалённого в списке нет — Р-12',
+    JSON.stringify(written) === JSON.stringify([gone]) &&
+      JSON.stringify(moved) === JSON.stringify([kept]) &&
+      dishNames?.includes(kept) &&
+      !dishNames?.includes(gone),
+    `записано ${JSON.stringify(written)}; после переноса ${JSON.stringify(moved)}; в списке ${JSON.stringify(dishNames?.filter((each) => each.includes('прогона')))}`,
+  )
+
+  // ─ Категория с блюдом удаляется только переносом: блюдо — в другой категории.
+  await go('/dishes')
+  await unfold('Категории')
+  await act(`${rowOf(from)}?.querySelector('.cat__name').click()`)
+  await sleep(500)
+  await act(`[...(${rowOf(from)}?.querySelectorAll('.cat__remove button') ?? [])].find((el) => el.textContent.trim() === 'Удалить')?.click()`)
+  await sleep(400)
+  await act(pickOption(`${rowOf(from)}.querySelector('[name="category-move-target"]')`, to))
+  await sleep(300)
+  await act(`[...(${rowOf(from)}?.querySelectorAll('button') ?? [])].find((el) => el.textContent.trim() === 'Перенести и удалить')?.click()`)
+  await sleep(1000)
+  const categoryNames = await run(`[...document.querySelectorAll('li.cat .cat__name')].map((el) => el.textContent.trim())`)
+  await act(`set(document.querySelector('.search'), 'прогона')`)
+  await sleep(500)
+  await act(`${rowOf(kept)}?.querySelector('.cat__name').click()`)
+  await sleep(500)
+  const keptIn = await run(`(() => {
+    const select = ${rowOf(kept)}?.querySelector('[name="dish-category"]')
+    return select?.selectedOptions[0]?.textContent.trim() ?? ''
+  })()`)
+  check(
+    '«Перенести и удалить» у категории: её блюдо — в другой категории, её самой нет — Р-12',
+    keptIn === to &&
+      categoryNames?.some((each) => each.startsWith(`${to} · 1 блюдо`)) &&
+      !categoryNames?.some((each) => each.startsWith(from)),
+    `«${kept}» в «${keptIn}»; категории ${JSON.stringify(categoryNames?.filter((each) => each.includes('прогона')))}`,
+  )
+
+  // ─ «В архив»: из выбора у приёма уходит, в архиве есть; «Вернуть» — снова в выборе.
+  await act(`[...(${rowOf(kept)}?.querySelectorAll('button') ?? [])].find((el) => el.textContent.trim() === 'В архив')?.click()`)
+  await sleep(800)
+  await go('/?day=2026-03-13')
+  const archivedPick = await lunchChips()
+  await go('/dishes')
+  await unfold('Архив')
+  const archive = `[...document.querySelectorAll('li.cat__head')].find((el) => el.querySelector('.cat__name')?.textContent.trim() === ${JSON.stringify(kept)})`
+  const inArchive = await run(`${archive} !== undefined`)
+  await act(`[...(${archive}?.querySelectorAll('button') ?? [])].find((el) => el.textContent.trim() === 'Вернуть')?.click()`)
+  await sleep(800)
+  const leftArchive = await run(`${archive} === undefined`)
+  await go('/?day=2026-03-13')
+  const restoredPick = await lunchChips()
+  check(
+    '«В архив» убирает блюдо из выбора у приёма, в архиве оно есть; «Вернуть» — снова в выборе — Р-12',
+    archivedPick?.includes('Щи') &&
+      !archivedPick?.includes(kept) &&
+      inArchive === true &&
+      leftArchive === true &&
+      restoredPick?.includes(kept),
+    `в архиве ${inArchive ? 'есть' : 'нет'}; в выборе: в архиве ${archivedPick?.includes(kept) ? 'есть' : 'нет'}, после «Вернуть» ${restoredPick?.includes(kept) ? 'есть' : 'нет'}`,
+  )
+
+  // Запись 13 марта убирается: день снова пуст.
+  await act(`window.confirm = () => true`)
+  await clickInMeal('Обед', 'Очистить')
+  await sleep(1200)
 }
 
 /** Значение числовой константы из исходника: справка обязана сказать ровно его. */
