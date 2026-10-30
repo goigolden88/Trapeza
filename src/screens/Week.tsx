@@ -47,6 +47,7 @@ import {
 import { periodSkips, skipLineText } from '../modules/food/skips.ts'
 import { useFood, type Food } from '../modules/food/useFood.ts'
 import { dayHref, loggedText, viewedWeek, weekKcalText, weekSummary, type WeekSummary } from '../modules/food/week.ts'
+import { weekdayDishes, weekdayLineText, weekdayWindowText, type Weekdays } from '../modules/food/weekdays.ts'
 import { BarChart, MiniBars } from '../shared/ui/BarChart.tsx'
 import { Fold } from '../shared/ui/Fold.tsx'
 import { useToday } from '../shared/ui/useToday.ts'
@@ -154,6 +155,7 @@ function WeekBody({ monday, today, data }: { monday: DateStr; today: DateStr; da
   const summary = weekSummary(data.intake, dishes, data.categories, monday, today)
   const index = indexDays(data.intake, dishes)
   const skips = periodSkips(data.skips, data.intake, summary.period)
+  const weekdays = weekdayDishes(data.intake, dishes, monday, today)
 
   return (
     <>
@@ -166,9 +168,11 @@ function WeekBody({ monday, today, data }: { monday: DateStr; today: DateStr; da
           <DaysBlock summary={summary} />
           <CompositionBlock summary={summary} />
           <MealsBlock summary={summary} />
-          <KcalBlock summary={summary} />
         </>
       )}
+      {/* Окно — восемь недель: пустая неделя блока не прячет. */}
+      <WeekdaysBlock weekdays={weekdays} />
+      {summary.records > 0 && <KcalBlock summary={summary} />}
     </>
   )
 }
@@ -579,6 +583,25 @@ function MealsBlock({ summary }: { summary: WeekSummary }) {
           )}
         </tbody>
       </table>
+    </Fold>
+  )
+}
+
+/**
+ * По дням недели (Р-63): что свойственно каждому дню за несколько полных
+ * недель, с основанием. Мало данных — так и сказано, строка не прячется.
+ */
+function WeekdaysBlock({ weekdays }: { weekdays: Weekdays }) {
+  return (
+    <Fold id="week:weekdays" title="По дням недели" summary={weekdayWindowText()} folded>
+      <p className="muted">{formatPeriod(weekdays.window)}</p>
+      <ul className="plain week-weekdays">
+        {weekdays.lines.map((line) => (
+          <li key={line.weekday}>
+            <b>{WEEKDAYS_SHORT[line.weekday]}</b>: {weekdayLineText(line)}
+          </li>
+        ))}
+      </ul>
     </Fold>
   )
 }

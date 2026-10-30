@@ -1193,6 +1193,9 @@ async function demoScenario() {
     /^Сладкое: \d+ дн\S* при пределе 2$/.test(sweet) && has(week, 'Каши:') && has(week, 'Рыба:') && has(week, 'Демо: данные выдуманные'),
     sweet,
   )
+  await unfold('По дням недели')
+  const demoWeekdays = await run(`[...document.querySelectorAll('.week-weekdays li')].map((el) => el.textContent.replace(/\\u00A0/g, ' '))`)
+  check('демо: «По дням недели» — семь строк с основанием — Р-63', demoWeekdays?.length === 7 && demoWeekdays.every((each) => /\d+ (?:(?:пн|вт|ср|чт|пт|сб|вс) )?из \d+/.test(each)), JSON.stringify(demoWeekdays))
 
   await go('/dishes')
   const dishes = await screen()
@@ -2129,6 +2132,18 @@ async function weekScenario() {
     `${line(full, 'Учёт в')}; ${line(full, 'Сладости')}; ${line(full, 'ккал в день')}`,
   )
   check('приёмы по дням: обед и ужин понедельника', /(?:^|\n)пн 16\s+—\s+1\s+1\s+—(?:\n|$)/.test(full), line(full, 'пн 16'))
+  // По дням недели (Р-63): семь строк пн…вс, у каждой — блюда с основанием,
+  // «ничего особенного» или «мало данных» с числом дней учёта.
+  const weekdays = await run(`[...document.querySelectorAll('.week-weekdays li')].map((el) => el.textContent.replace(/\\u00A0/g, ' '))`)
+  const weekdayLine = /^(пн|вт|ср|чт|пт|сб|вс): (?:(?:мало данных|ничего особенного) — учёт в \d+ \1 из 8|.+ — \d+ из \d+ \1(?:, .+ — \d+ из \d+ \1)*)$/
+  check(
+    'по дням недели: за 8 недель, семь строк пн…вс с основанием — Р-63',
+    has(full, 'По дням недели') &&
+      has(full, 'за 8 недель') &&
+      weekdays?.length === 7 &&
+      weekdays.every((each, at) => weekdayLine.test(each) && each.startsWith(['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'][at])),
+    JSON.stringify(weekdays),
+  )
 
   // ─ «Месяц» (Р-61): переключатель открывает текущий месяц, вперёд не листается.
   await act(`byText('button', 'Месяц')?.click()`)
